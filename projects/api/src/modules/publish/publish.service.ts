@@ -1,15 +1,16 @@
 import type { DbClient } from '../../shared'
+import type { PublishConfig } from '../../config'
 import { publishRecords, accounts } from '../../shared'
 import { eq, and, sql } from 'drizzle-orm'
 import { uuid, now, jsonResponse, errorResponse, paginatedResponse } from '../../shared'
-import { IMMEDIATE_PUBLISH_TOLERANCE_MS, PUBLISH_STATUS } from '../../shared'
-import type { Env } from '../../env'
+import { PUBLISH_STATUS } from '../../shared'
 import type { PublishJobData } from '../../shared'
 
 export class PublishService {
   constructor(
     private db: DbClient,
-    private env: Env,
+    private config: PublishConfig,
+    private queue: Queue<any>,
   ) {}
 
   async createPublishTask(
@@ -61,10 +62,10 @@ export class PublishService {
       updatedAt: ts,
     })
 
-    const isImmediate = Math.abs(effectivePublishTime - ts) <= IMMEDIATE_PUBLISH_TOLERANCE_MS
+    const isImmediate = Math.abs(effectivePublishTime - ts) <= this.config.immediateToleranceMs
 
     if (isImmediate) {
-      await this.enqueuePublish(recordId, platform, data.accountId, 3, data)
+      await this.enqueuePublish(recordId, platform, data.accountId, this.config.defaultMaxRetries, data)
       return jsonResponse({ id: recordId, queueId, status: PUBLISH_STATUS.QUEUED, immediate: true })
     }
 
@@ -87,7 +88,7 @@ export class PublishService {
       params,
     }
 
-    const msg = await this.env.PUBLISH_QUEUE.send(jobData) as any
+    const msg = await this.queue.send(jobData) as any
     const msgId = msg?.id || `${recordId}-${now()}`
 
     await this.db.update(publishRecords)

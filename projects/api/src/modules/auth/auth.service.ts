@@ -1,11 +1,10 @@
-import type { Context } from 'hono'
-import type { Env } from '../../env'
 import type { DbClient } from '../../shared'
+import type { AuthConfig } from '../../config'
 import { users, apiKeys } from '../../shared'
 import { eq, and } from 'drizzle-orm'
 import { uuid, now, sha1, errorResponse, jsonResponse } from '../../shared'
 
-interface JwtPayload {
+export interface JwtPayload {
   userId: string
   email: string
   iat: number
@@ -15,7 +14,7 @@ interface JwtPayload {
 export class AuthService {
   constructor(
     private db: DbClient,
-    private secret: string,
+    private config: AuthConfig,
   ) {}
 
   async register(email: string, password: string, name?: string) {
@@ -116,7 +115,7 @@ export class AuthService {
 
   async verifyToken(token: string): Promise<JwtPayload | null> {
     try {
-      const key = await this.importKey(this.secret)
+      const key = await this.importKey(this.config.jwtSecret)
       const payload = await crypto.subtle.verify(
         { name: 'HMAC', hash: 'SHA-256' },
         key,
@@ -146,7 +145,7 @@ export class AuthService {
     const encodedPayload = btoa(JSON.stringify(payload))
     const signingInput = `${encodedHeader}.${encodedPayload}`
 
-    const key = await this.importKey(this.secret)
+    const key = await this.importKey(this.config.jwtSecret)
     const signature = await crypto.subtle.sign(
       { name: 'HMAC', hash: 'SHA-256' },
       key,
@@ -173,33 +172,5 @@ export class AuthService {
       'raw', new TextEncoder().encode(secret),
       { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'],
     )
-  }
-}
-
-export function createAuthMiddleware(authService: AuthService) {
-  return async (c: Context<{ Bindings: Env; Variables: { userId: string } }>, next: () => Promise<void>) => {
-    const apiKey = c.req.header('x-api-key')
-    if (apiKey) {
-      const userId = await authService.validateApiKey(apiKey)
-      if (userId) {
-        c.set('userId', userId)
-        return next()
-      }
-      return jsonResponse({ code: 401, message: 'Invalid API Key', data: null }, 401)
-    }
-
-    const authHeader = c.req.header('Authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return jsonResponse({ code: 401, message: '未登录', data: null }, 401)
-    }
-
-    const token = authHeader.slice(7)
-    const payload = await authService.verifyToken(token)
-    if (!payload) {
-      return jsonResponse({ code: 401, message: 'Token 无效或已过期', data: null }, 401)
-    }
-
-    c.set('userId', payload.userId)
-    return next()
   }
 }

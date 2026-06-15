@@ -1,18 +1,20 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import type { Env } from '../../env'
+import type { AuthConfig } from '../../config'
 import { createDb } from '../../shared'
-import { AuthService, createAuthMiddleware } from './auth.service'
+import { AuthService } from './auth.service'
+import { createAuthMiddleware } from '../../middlewares'
 import {
   registerSchema, loginSchema, createApiKeySchema, changePasswordSchema,
   idSchema,
 } from '../../shared'
 import { errorResponse } from '../../shared'
 
-export function createAuthRoutes(secret: string) {
+export function createAuthRoutes(config: AuthConfig) {
   const auth = new Hono<{ Bindings: Env; Variables: { userId: string } }>()
 
-  const getService = (c: any) => new AuthService(createDb(c.env.DB), secret)
+  const getService = (c: any) => new AuthService(createDb(c.env.DB), config)
 
   auth.post('/register', zValidator('json', registerSchema), async (c) => {
     const body = c.req.valid('json')
@@ -27,10 +29,10 @@ export function createAuthRoutes(secret: string) {
   })
 
   const authenticated = new Hono<{ Bindings: Env; Variables: { userId: string } }>()
-  const authMiddleware = (c: any, next: any) => {
-    return createAuthMiddleware(getService(c))(c as any, next)
-  }
-  authenticated.use('*', authMiddleware)
+  authenticated.use('*', (c, next) => {
+    const service = getService(c)
+    return createAuthMiddleware(service)(c, next)
+  })
 
   authenticated.get('/profile', async (c) => {
     const service = getService(c)

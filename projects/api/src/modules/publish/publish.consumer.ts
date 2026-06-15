@@ -1,49 +1,18 @@
 import type { Env } from '../../env'
 import type { PublishJobData } from '../../shared'
-import { createDb } from '../../shared'
+import { createAppConfig } from '../../config'
+import { createDb, accounts } from '../../shared'
 import { PublishService } from './publish.service'
-import { bilibiliPublish } from '../platform/bilibili.service'
-import { RelayService } from '../relay/relay.service'
-import { accounts } from '../../shared'
+import { bilibiliPublish } from '../../platforms/bilibili'
 import { eq } from 'drizzle-orm'
 
-async function bilibiliRelayPublish(
-  env: Env,
-  accountId: string,
-  params: Record<string, unknown>,
-): Promise<{ success: boolean; workUrl?: string; platformWorkId?: string; error?: string }> {
-  const db = createDb(env.DB)
-  const relayService = new RelayService(db)
-
-  const account = await db.select({
-    accessToken: accounts.accessToken,
-  }).from(accounts).where(eq(accounts.id, accountId)).get()
-
-  const accessToken = account?.accessToken || ''
-
-  const result = await relayService.bilibiliPublish(accessToken, {
-    title: (params.title as string) || '',
-    description: params.description as string | undefined,
-    videoUrl: params.videoUrl as string | undefined,
-  })
-
-  const data = await result.json() as any
-  return {
-    success: data.code === 0 || data.success === true,
-    workUrl: data.workUrl || data.data?.workUrl,
-    platformWorkId: data.platformWorkId || data.data?.platformWorkId,
-    error: data.message,
-  }
-}
-
-const platformPublishers: Record<string, (accountId: string, params: Record<string, unknown>) => Promise<{ success: boolean; workUrl?: string; platformWorkId?: string; error?: string }>> = {
-  bilibili: bilibiliPublish,
-}
+const platformPublishers: Record<string, (accountId: string, params: Record<string, unknown>) => Promise<{ success: boolean; workUrl?: string; platformWorkId?: string; error?: string }>> = {}
 
 export default {
   async queue(batch: MessageBatch<PublishJobData>, env: Env) {
     const db = createDb(env.DB)
-    const publishService = new PublishService(db, env)
+    const cfg = createAppConfig(env)
+    const publishService = new PublishService(db, cfg.publish, env.PUBLISH_QUEUE)
 
     for (const msg of batch.messages) {
       const { recordId, platform, accountId, retryCount, maxRetries } = msg.body
@@ -53,8 +22,18 @@ export default {
 
         let result: { success: boolean; workUrl?: string; platformWorkId?: string; error?: string }
 
-        if (platform === 'bilibili' && env.BILIBILI_CLIENT_ID) {
-          result = await bilibiliRelayPublish(env, accountId, msg.body.params)
+        if (platform === 'bilibili') {
+          const account = await db
+            .select({ accessToken: accounts.accessToken })
+            .from(accounts)
+            .where(eq(accounts.id, accountId))
+            .get()
+
+          result = await bilibiliPublish(account?.accessToken || '', {
+            title: (msg.body.params.title as string) || '',
+            description: msg.body.params.description as string | undefined,
+            videoUrl: msg.body.params.videoUrl as string | undefined,
+          })
         } else {
           const publisher = platformPublishers[platform]
           if (!publisher) {
@@ -63,9 +42,11 @@ export default {
             continue
           }
 
-          const account = await db.select({
-            accessToken: accounts.accessToken,
-          }).from(accounts).where(eq(accounts.id, accountId)).get()
+          const account = await db
+            .select({ accessToken: accounts.accessToken })
+            .from(accounts)
+            .where(eq(accounts.id, accountId))
+            .get()
 
           const params = {
             ...msg.body.params,

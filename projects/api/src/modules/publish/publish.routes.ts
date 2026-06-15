@@ -1,14 +1,15 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import type { Env } from '../../env'
+import type { PublishConfig } from '../../config'
 import { createDb } from '../../shared'
 import { PublishService } from './publish.service'
 import { createPublishSchema, idSchema, paginationSchema } from '../../shared'
 
-export function createPublishRoutes() {
+export function createPublishRoutes(config: PublishConfig) {
   const publish = new Hono<{ Bindings: Env; Variables: { userId: string } }>()
 
-  const getService = (c: any) => new PublishService(createDb(c.env.DB), c.env)
+  const getService = (c: any) => new PublishService(createDb(c.env.DB), config, c.env.PUBLISH_QUEUE)
 
   publish.post('/', zValidator('json', createPublishSchema), async (c) => {
     const body = c.req.valid('json')
