@@ -1,0 +1,20 @@
+{
+  "name": "mvp-slim",
+  "version": "0.2.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @mvp/api dev",
+    "dev:ai": "pnpm --filter @mvp/ai dev",
+    "dev:web": "pnpm --filter @mvp/web dev",
+    "typecheck": "pnpm -r typecheck",
+    "generate": "pnpm --filter @mvp/api generate",
+    "migrate:local": "pnpm --filter @mvp/api migrate:local",
+    "migrate:remote": "pnpm --filter @mvp/api migrate:remote",
+    "deploy:api": "pnpm --filter @mvp/api deploy",
+    "deploy:ai": "pnpm --filter @mvp/ai deploy"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,20 @@
+name = "mvp-ai"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mvp-db"
+database_id = "mvp-db-dev"
+
+[[queues.producers]]
+binding = "AI_QUEUE"
+queue = "ai-task-queue-dev"
+
+[[queues.consumers]]
+queue = "ai-task-queue-dev"
+max_batch_size = 5
+max_batch_timeout = 10
+max_retries = 3
+max_concurrency = 5

@@ -1,0 +1,27 @@
+name = "mvp-api"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+[dev]
+port = 8787
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mvp-db"
+database_id = "mvp-db-dev"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "mvp-assets-dev"
+
+[[queues.producers]]
+binding = "PUBLISH_QUEUE"
+queue = "publish-queue-dev"
+
+[[queues.consumers]]
+queue = "publish-queue-dev"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+max_concurrency = 3
