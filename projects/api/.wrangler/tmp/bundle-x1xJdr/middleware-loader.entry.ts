@@ -3,12 +3,12 @@
 // export dynamically through wrangler, or we can potentially let users directly
 // add them as a sort of "plugin" system.
 
-import ENTRY, { __INTERNAL_WRANGLER_MIDDLEWARE__ } from "/home/maosheng/mvp-slim/apps/api/.wrangler/tmp/bundle-0XxYtd/middleware-insertion-facade.js";
-import { __facade_invoke__, __facade_register__, Dispatcher } from "/home/maosheng/mvp-slim/node_modules/.pnpm/wrangler@4.100.0_@cloudflare+workers-types@4.20260615.1/node_modules/wrangler/templates/middleware/common.ts";
-import type { WorkerEntrypointConstructor } from "/home/maosheng/mvp-slim/apps/api/.wrangler/tmp/bundle-0XxYtd/middleware-insertion-facade.js";
+import ENTRY, { __INTERNAL_WRANGLER_MIDDLEWARE__ } from "/home/maosheng/studyapps/code/mvp-slim/projects/api/.wrangler/tmp/bundle-x1xJdr/middleware-insertion-facade.js";
+import { __facade_invoke__, __facade_register__, Dispatcher } from "/home/maosheng/studyapps/code/mvp-slim/node_modules/.pnpm/wrangler@4.100.0_@cloudflare+workers-types@4.20260615.1/node_modules/wrangler/templates/middleware/common.ts";
+import type { WorkerEntrypointConstructor } from "/home/maosheng/studyapps/code/mvp-slim/projects/api/.wrangler/tmp/bundle-x1xJdr/middleware-insertion-facade.js";
 
 // Preserve all the exports from the worker
-export * from "/home/maosheng/mvp-slim/apps/api/.wrangler/tmp/bundle-0XxYtd/middleware-insertion-facade.js";
+export * from "/home/maosheng/studyapps/code/mvp-slim/projects/api/.wrangler/tmp/bundle-x1xJdr/middleware-insertion-facade.js";
 
 class __Facade_ScheduledController__ implements ScheduledController {
 	readonly #noRetry: ScheduledController["noRetry"];

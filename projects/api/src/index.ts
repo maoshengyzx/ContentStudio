@@ -10,13 +10,14 @@ import { createCreditRoutes } from './modules/credit/credit.routes'
 import { createFileRoutes } from './modules/file/file.routes'
 import { errorResponse } from './shared'
 import { createBilibiliRoutes } from './platforms/bilibili'
+import type { PublishJobData } from './shared'
 import {
   createAuthMiddleware,
   tryInternalAuth,
   corsMiddleware,
   requestLogger,
 } from './middlewares'
-import { default as publishConsumer } from './modules/publish/publish.consumer'
+import { queue as consumerQueue } from './modules/publish/publish.consumer'
 
 async function createApp(env: Env) {
   const app = new Hono<{ Bindings: Env; Variables: { userId: string } }>()
@@ -61,11 +62,13 @@ async function createApp(env: Env) {
 }
 
 export { createApp }
-export const queue = publishConsumer.queue
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const app = await createApp(env)
     return app.fetch(request, env, ctx)
+  },
+  async queue(batch: MessageBatch<PublishJobData>, env: Env): Promise<void> {
+    await consumerQueue(batch, env)
   },
 }

@@ -2,14 +2,15 @@ import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import type { Env } from '../../env'
 import type { BilibiliConfig } from '../../config'
-import { createDb, accounts, errorResponse, jsonResponse } from '../../shared'
+import { createDb, accounts, publishRecords, errorResponse, jsonResponse } from '../../shared'
+import { PUBLISH_STATUS } from '../../shared'
 import { requireInternalAuth } from '../../middlewares'
 import { BilibiliOAuthService } from './bilibili.oauth'
 import { bilibiliPublish } from './bilibili.publisher'
 
 /**
- * B站平台路由工厂 — OAuth 授权流程 + 内部发布端点。
- * 挂载点：/platforms → 实际路径 /platforms/bilibili/oauth/...、/platforms/bilibili/publish
+ * B站平台路由工厂 — OAuth 授权流程 + 内部发布端点 + Webhook 回调。
+ * 挂载点：/platforms
  *
  * @param config B站平台配置（clientId, clientSecret, redirectUri）
  * @param internalToken 内部认证令牌
@@ -89,6 +90,7 @@ export function createBilibiliRoutes(config: BilibiliConfig, internalToken: stri
 
   // ---------------------------------------------------------------------------
   // 内部发布端点（服务间调用，需 Internal Token）
+  // 支持通过 accountId 自动获取/刷新 token
   // ---------------------------------------------------------------------------
 
   bilibili.post(
@@ -101,33 +103,102 @@ export function createBilibiliRoutes(config: BilibiliConfig, internalToken: stri
         title: string
         description?: string
         videoUrl?: string
+        coverUrl?: string
+        tags?: string[]
+        tid?: number
+        copyright?: number
       }>()
 
       if (!body.title) return errorResponse('title is required', 400)
 
       const db = createDb(c.env.DB)
+      const oauthService = new BilibiliOAuthService(db)
+
       let accessToken = body.accessToken
-      if (!accessToken && body.accountId) {
-        const account = await db
-          .select({ accessToken: accounts.accessToken })
-          .from(accounts)
-          .where(eq(accounts.id, body.accountId))
-          .get()
-        if (!account) return errorResponse('Account not found', 404)
-        accessToken = account.accessToken
+      let resolvedAccountId = body.accountId
+
+      if (!accessToken && resolvedAccountId) {
+        // 通过 accountId 自动获取/刷新 token
+        try {
+          accessToken = await oauthService.getAccountAccessToken(
+            resolvedAccountId,
+            config.clientId,
+            config.clientSecret,
+          )
+        } catch (err: any) {
+          return errorResponse(err.message, 401)
+        }
       }
+
       if (!accessToken) return errorResponse('accessToken or accountId required', 400)
+      if (!config.clientId || !config.clientSecret) {
+        return errorResponse('B站 clientId/clientSecret 未配置', 500)
+      }
 
       const result = await bilibiliPublish(accessToken, {
         title: body.title,
         description: body.description,
         videoUrl: body.videoUrl,
-      })
+        coverUrl: body.coverUrl,
+        tags: body.tags,
+        tid: body.tid,
+        copyright: body.copyright,
+      }, { clientId: config.clientId, clientSecret: config.clientSecret })
 
       if (!result.success) return errorResponse(result.error || '发布失败', 502)
       return jsonResponse(result)
     },
   )
+
+  // ---------------------------------------------------------------------------
+  // Webhook 回调端点（B站审核结果通知）
+  // ---------------------------------------------------------------------------
+
+  bilibili.post('/bilibili/webhooks', async (c) => {
+    const body = await c.req.json<{
+      event?: string
+      content?: { share_id?: string; video_id?: string }
+      from_user_id?: string
+    }>()
+
+    if (!body.content?.video_id) {
+      return jsonResponse({ code: 0, message: 'ignored' })
+    }
+
+    const db = createDb(c.env.DB)
+    const videoId = body.content.video_id
+    const shareId = body.content.share_id
+
+    // 尝试通过 share_id 匹配发布记录（share_id 在 platformWorkId 中）
+    if (shareId) {
+      // 查找 platformWorkId 包含该 share_id 的、状态为 publishing 的记录
+      const records = await db
+        .select()
+        .from(publishRecords)
+        .where(eq(publishRecords.platform, 'bilibili'))
+        .all()
+
+      const matched = records.find(
+        (r) =>
+          r.status === PUBLISH_STATUS.PUBLISHING &&
+          r.platformWorkId === shareId,
+      )
+
+      if (matched) {
+        await db
+          .update(publishRecords)
+          .set({
+            status: PUBLISH_STATUS.PUBLISHED,
+            platformWorkId: videoId,
+            workUrl: `https://www.bilibili.com/video/${videoId}`,
+            updatedAt: Date.now(),
+          })
+          .where(eq(publishRecords.id, matched.id))
+      }
+    }
+
+    return jsonResponse({ code: 0, message: 'ok' })
+  })
 
   return bilibili
 }

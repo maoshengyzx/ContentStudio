@@ -3083,254 +3083,6 @@ var Hono2 = class extends Hono {
   }
 };
 
-// ../../node_modules/.pnpm/hono@4.12.25/node_modules/hono/dist/middleware/cors/index.js
-var cors = /* @__PURE__ */ __name((options) => {
-  const opts = {
-    origin: "*",
-    allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"],
-    allowHeaders: [],
-    exposeHeaders: [],
-    ...options
-  };
-  const findAllowOrigin = ((optsOrigin) => {
-    if (typeof optsOrigin === "string") {
-      if (optsOrigin === "*") {
-        return () => optsOrigin;
-      } else {
-        return (origin) => optsOrigin === origin ? origin : null;
-      }
-    } else if (typeof optsOrigin === "function") {
-      return optsOrigin;
-    } else {
-      return (origin) => optsOrigin.includes(origin) ? origin : null;
-    }
-  })(opts.origin);
-  const findAllowMethods = ((optsAllowMethods) => {
-    if (typeof optsAllowMethods === "function") {
-      return optsAllowMethods;
-    } else if (Array.isArray(optsAllowMethods)) {
-      return () => optsAllowMethods;
-    } else {
-      return () => [];
-    }
-  })(opts.allowMethods);
-  return /* @__PURE__ */ __name(async function cors2(c, next) {
-    function set(key, value) {
-      c.res.headers.set(key, value);
-    }
-    __name(set, "set");
-    const allowOrigin = await findAllowOrigin(c.req.header("origin") || "", c);
-    if (allowOrigin) {
-      set("Access-Control-Allow-Origin", allowOrigin);
-    }
-    if (opts.credentials) {
-      set("Access-Control-Allow-Credentials", "true");
-    }
-    if (opts.exposeHeaders?.length) {
-      set("Access-Control-Expose-Headers", opts.exposeHeaders.join(","));
-    }
-    if (c.req.method === "OPTIONS") {
-      if (opts.origin !== "*") {
-        set("Vary", "Origin");
-      }
-      if (opts.maxAge != null) {
-        set("Access-Control-Max-Age", opts.maxAge.toString());
-      }
-      const allowMethods = await findAllowMethods(c.req.header("origin") || "", c);
-      if (allowMethods.length) {
-        set("Access-Control-Allow-Methods", allowMethods.join(","));
-      }
-      let headers = opts.allowHeaders;
-      if (!headers?.length) {
-        const requestHeaders = c.req.header("Access-Control-Request-Headers");
-        if (requestHeaders) {
-          headers = requestHeaders.split(/\s*,\s*/);
-        }
-      }
-      if (headers?.length) {
-        set("Access-Control-Allow-Headers", headers.join(","));
-        c.res.headers.append("Vary", "Access-Control-Request-Headers");
-      }
-      c.res.headers.delete("Content-Length");
-      c.res.headers.delete("Content-Type");
-      return new Response(null, {
-        headers: c.res.headers,
-        status: 204,
-        statusText: "No Content"
-      });
-    }
-    await next();
-    if (opts.origin !== "*") {
-      c.header("Vary", "Origin", { append: true });
-    }
-  }, "cors2");
-}, "cors");
-
-// ../../node_modules/.pnpm/hono@4.12.25/node_modules/hono/dist/utils/cookie.js
-var validCookieNameRegEx = /^[\w!#$%&'*.^`|~+-]+$/;
-var validCookieValueRegEx = /^[ !#-:<-[\]-~]*$/;
-var trimCookieWhitespace = /* @__PURE__ */ __name((value) => {
-  let start = 0;
-  let end = value.length;
-  while (start < end) {
-    const charCode = value.charCodeAt(start);
-    if (charCode !== 32 && charCode !== 9) {
-      break;
-    }
-    start++;
-  }
-  while (end > start) {
-    const charCode = value.charCodeAt(end - 1);
-    if (charCode !== 32 && charCode !== 9) {
-      break;
-    }
-    end--;
-  }
-  return start === 0 && end === value.length ? value : value.slice(start, end);
-}, "trimCookieWhitespace");
-var parse = /* @__PURE__ */ __name((cookie, name) => {
-  if (name && cookie.indexOf(name) === -1) {
-    return {};
-  }
-  const pairs = cookie.split(";");
-  const parsedCookie = /* @__PURE__ */ Object.create(null);
-  for (const pairStr of pairs) {
-    const valueStartPos = pairStr.indexOf("=");
-    if (valueStartPos === -1) {
-      continue;
-    }
-    const cookieName = trimCookieWhitespace(pairStr.substring(0, valueStartPos));
-    if (name && name !== cookieName || !validCookieNameRegEx.test(cookieName) || cookieName in parsedCookie) {
-      continue;
-    }
-    let cookieValue = trimCookieWhitespace(pairStr.substring(valueStartPos + 1));
-    if (cookieValue.startsWith('"') && cookieValue.endsWith('"')) {
-      cookieValue = cookieValue.slice(1, -1);
-    }
-    if (validCookieValueRegEx.test(cookieValue)) {
-      parsedCookie[cookieName] = cookieValue.indexOf("%") !== -1 ? tryDecode(cookieValue, decodeURIComponent_) : cookieValue;
-      if (name) {
-        break;
-      }
-    }
-  }
-  return parsedCookie;
-}, "parse");
-
-// ../../node_modules/.pnpm/hono@4.12.25/node_modules/hono/dist/helper/cookie/index.js
-var getCookie = /* @__PURE__ */ __name((c, key, prefix) => {
-  const cookie = c.req.raw.headers.get("Cookie");
-  if (typeof key === "string") {
-    if (!cookie) {
-      return void 0;
-    }
-    let finalKey = key;
-    if (prefix === "secure") {
-      finalKey = "__Secure-" + key;
-    } else if (prefix === "host") {
-      finalKey = "__Host-" + key;
-    }
-    const obj2 = parse(cookie, finalKey);
-    return obj2[finalKey];
-  }
-  if (!cookie) {
-    return {};
-  }
-  const obj = parse(cookie);
-  return obj;
-}, "getCookie");
-
-// ../../node_modules/.pnpm/hono@4.12.25/node_modules/hono/dist/utils/buffer.js
-var bufferToFormData = /* @__PURE__ */ __name((arrayBuffer, contentType) => {
-  const response = new Response(arrayBuffer, {
-    headers: {
-      "Content-Type": contentType
-    }
-  });
-  return response.formData();
-}, "bufferToFormData");
-
-// ../../node_modules/.pnpm/hono@4.12.25/node_modules/hono/dist/validator/validator.js
-var jsonRegex = /^application\/([a-z-\.]+\+)?json(;\s*[a-zA-Z0-9\-]+\=([^;]+))*$/;
-var multipartRegex = /^multipart\/form-data(;\s?boundary=[a-zA-Z0-9'"()+_,\-./:=?]+)?$/;
-var urlencodedRegex = /^application\/x-www-form-urlencoded(;\s*[a-zA-Z0-9\-]+\=([^;]+))*$/;
-var validator = /* @__PURE__ */ __name((target, validationFunc) => {
-  return async (c, next) => {
-    let value = {};
-    const contentType = c.req.header("Content-Type");
-    switch (target) {
-      case "json":
-        if (!contentType || !jsonRegex.test(contentType)) {
-          break;
-        }
-        try {
-          value = await c.req.json();
-        } catch {
-          const message = "Malformed JSON in request body";
-          throw new HTTPException(400, { message });
-        }
-        break;
-      case "form": {
-        if (!contentType || !(multipartRegex.test(contentType) || urlencodedRegex.test(contentType))) {
-          break;
-        }
-        let formData;
-        if (c.req.bodyCache.formData) {
-          formData = await c.req.bodyCache.formData;
-        } else {
-          try {
-            const arrayBuffer = await c.req.arrayBuffer();
-            formData = await bufferToFormData(arrayBuffer, contentType);
-            c.req.bodyCache.formData = formData;
-          } catch (e) {
-            let message = "Malformed FormData request.";
-            message += e instanceof Error ? ` ${e.message}` : ` ${String(e)}`;
-            throw new HTTPException(400, { message });
-          }
-        }
-        const form = /* @__PURE__ */ Object.create(null);
-        formData.forEach((value2, key) => {
-          if (key.endsWith("[]")) {
-            ;
-            (form[key] ??= []).push(value2);
-          } else if (Array.isArray(form[key])) {
-            ;
-            form[key].push(value2);
-          } else if (Object.hasOwn(form, key)) {
-            form[key] = [form[key], value2];
-          } else {
-            form[key] = value2;
-          }
-        });
-        value = form;
-        break;
-      }
-      case "query":
-        value = Object.fromEntries(
-          Object.entries(c.req.queries()).map(([k, v]) => {
-            return v.length === 1 ? [k, v[0]] : [k, v];
-          })
-        );
-        break;
-      case "param":
-        value = c.req.param();
-        break;
-      case "header":
-        value = c.req.header();
-        break;
-      case "cookie":
-        value = getCookie(c);
-        break;
-    }
-    const res = await validationFunc(value, c);
-    if (res instanceof Response) {
-      return res;
-    }
-    c.req.addValidatedData(target, res);
-    return await next();
-  };
-}, "validator");
-
 // ../../node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
 var external_exports = {};
 __export(external_exports, {
@@ -7514,6 +7266,255 @@ var coerce = {
   date: /* @__PURE__ */ __name(((arg) => ZodDate.create({ ...arg, coerce: true })), "date")
 };
 var NEVER = INVALID;
+
+// src/config.ts
+var oauthBaseSchema = external_exports.object({
+  clientId: external_exports.string().default(""),
+  clientSecret: external_exports.string().default(""),
+  redirectUri: external_exports.string().default("")
+});
+var oauthWithScopesSchema = oauthBaseSchema.extend({
+  scopes: external_exports.array(external_exports.string()).default([])
+});
+var bilibiliConfigSchema = oauthBaseSchema;
+var douyinConfigSchema = oauthBaseSchema;
+var kuaishouConfigSchema = oauthBaseSchema;
+var xiaohongshuConfigSchema = oauthBaseSchema;
+var youtubeConfigSchema = oauthBaseSchema;
+var tiktokConfigSchema = oauthWithScopesSchema;
+var twitterConfigSchema = oauthBaseSchema;
+var facebookConfigSchema = oauthWithScopesSchema;
+var instagramConfigSchema = oauthWithScopesSchema;
+var platformsConfigSchema = external_exports.object({
+  bilibili: bilibiliConfigSchema,
+  douyin: douyinConfigSchema,
+  kuaishou: kuaishouConfigSchema,
+  xiaohongshu: xiaohongshuConfigSchema,
+  youtube: youtubeConfigSchema,
+  tiktok: tiktokConfigSchema,
+  twitter: twitterConfigSchema,
+  facebook: facebookConfigSchema,
+  instagram: instagramConfigSchema
+});
+var authConfigSchema = external_exports.object({
+  jwtSecret: external_exports.string().min(1),
+  internalToken: external_exports.string().min(1)
+});
+var publishConfigSchema = external_exports.object({
+  immediateToleranceMs: external_exports.number().default(3e4),
+  defaultMaxRetries: external_exports.number().int().positive().default(3)
+});
+var appConfigSchema = external_exports.object({
+  auth: authConfigSchema,
+  platforms: platformsConfigSchema,
+  publish: publishConfigSchema
+});
+function readPlatformConfig(env2, prefix) {
+  return {
+    clientId: env2[`${prefix}_CLIENT_ID`] ?? "",
+    clientSecret: env2[`${prefix}_CLIENT_SECRET`] ?? "",
+    redirectUri: env2[`${prefix}_REDIRECT_URI`] ?? ""
+  };
+}
+__name(readPlatformConfig, "readPlatformConfig");
+function createAppConfig(env2) {
+  return {
+    auth: {
+      jwtSecret: env2.JWT_SECRET,
+      internalToken: env2.INTERNAL_TOKEN
+    },
+    platforms: {
+      bilibili: readPlatformConfig(env2, "BILIBILI"),
+      douyin: readPlatformConfig(env2, "DOUYIN"),
+      kuaishou: readPlatformConfig(env2, "KUAISHOU"),
+      xiaohongshu: readPlatformConfig(env2, "XIAOHONGSHU"),
+      youtube: readPlatformConfig(env2, "YOUTUBE"),
+      tiktok: {
+        ...readPlatformConfig(env2, "TIKTOK"),
+        scopes: []
+      },
+      twitter: readPlatformConfig(env2, "TWITTER"),
+      facebook: {
+        ...readPlatformConfig(env2, "FACEBOOK"),
+        scopes: []
+      },
+      instagram: {
+        ...readPlatformConfig(env2, "INSTAGRAM"),
+        scopes: []
+      }
+    },
+    publish: {
+      immediateToleranceMs: 3e4,
+      defaultMaxRetries: 3
+    }
+  };
+}
+__name(createAppConfig, "createAppConfig");
+
+// ../../node_modules/.pnpm/hono@4.12.25/node_modules/hono/dist/utils/cookie.js
+var validCookieNameRegEx = /^[\w!#$%&'*.^`|~+-]+$/;
+var validCookieValueRegEx = /^[ !#-:<-[\]-~]*$/;
+var trimCookieWhitespace = /* @__PURE__ */ __name((value) => {
+  let start = 0;
+  let end = value.length;
+  while (start < end) {
+    const charCode = value.charCodeAt(start);
+    if (charCode !== 32 && charCode !== 9) {
+      break;
+    }
+    start++;
+  }
+  while (end > start) {
+    const charCode = value.charCodeAt(end - 1);
+    if (charCode !== 32 && charCode !== 9) {
+      break;
+    }
+    end--;
+  }
+  return start === 0 && end === value.length ? value : value.slice(start, end);
+}, "trimCookieWhitespace");
+var parse = /* @__PURE__ */ __name((cookie, name) => {
+  if (name && cookie.indexOf(name) === -1) {
+    return {};
+  }
+  const pairs = cookie.split(";");
+  const parsedCookie = /* @__PURE__ */ Object.create(null);
+  for (const pairStr of pairs) {
+    const valueStartPos = pairStr.indexOf("=");
+    if (valueStartPos === -1) {
+      continue;
+    }
+    const cookieName = trimCookieWhitespace(pairStr.substring(0, valueStartPos));
+    if (name && name !== cookieName || !validCookieNameRegEx.test(cookieName) || cookieName in parsedCookie) {
+      continue;
+    }
+    let cookieValue = trimCookieWhitespace(pairStr.substring(valueStartPos + 1));
+    if (cookieValue.startsWith('"') && cookieValue.endsWith('"')) {
+      cookieValue = cookieValue.slice(1, -1);
+    }
+    if (validCookieValueRegEx.test(cookieValue)) {
+      parsedCookie[cookieName] = cookieValue.indexOf("%") !== -1 ? tryDecode(cookieValue, decodeURIComponent_) : cookieValue;
+      if (name) {
+        break;
+      }
+    }
+  }
+  return parsedCookie;
+}, "parse");
+
+// ../../node_modules/.pnpm/hono@4.12.25/node_modules/hono/dist/helper/cookie/index.js
+var getCookie = /* @__PURE__ */ __name((c, key, prefix) => {
+  const cookie = c.req.raw.headers.get("Cookie");
+  if (typeof key === "string") {
+    if (!cookie) {
+      return void 0;
+    }
+    let finalKey = key;
+    if (prefix === "secure") {
+      finalKey = "__Secure-" + key;
+    } else if (prefix === "host") {
+      finalKey = "__Host-" + key;
+    }
+    const obj2 = parse(cookie, finalKey);
+    return obj2[finalKey];
+  }
+  if (!cookie) {
+    return {};
+  }
+  const obj = parse(cookie);
+  return obj;
+}, "getCookie");
+
+// ../../node_modules/.pnpm/hono@4.12.25/node_modules/hono/dist/utils/buffer.js
+var bufferToFormData = /* @__PURE__ */ __name((arrayBuffer, contentType) => {
+  const response = new Response(arrayBuffer, {
+    headers: {
+      "Content-Type": contentType
+    }
+  });
+  return response.formData();
+}, "bufferToFormData");
+
+// ../../node_modules/.pnpm/hono@4.12.25/node_modules/hono/dist/validator/validator.js
+var jsonRegex = /^application\/([a-z-\.]+\+)?json(;\s*[a-zA-Z0-9\-]+\=([^;]+))*$/;
+var multipartRegex = /^multipart\/form-data(;\s?boundary=[a-zA-Z0-9'"()+_,\-./:=?]+)?$/;
+var urlencodedRegex = /^application\/x-www-form-urlencoded(;\s*[a-zA-Z0-9\-]+\=([^;]+))*$/;
+var validator = /* @__PURE__ */ __name((target, validationFunc) => {
+  return async (c, next) => {
+    let value = {};
+    const contentType = c.req.header("Content-Type");
+    switch (target) {
+      case "json":
+        if (!contentType || !jsonRegex.test(contentType)) {
+          break;
+        }
+        try {
+          value = await c.req.json();
+        } catch {
+          const message = "Malformed JSON in request body";
+          throw new HTTPException(400, { message });
+        }
+        break;
+      case "form": {
+        if (!contentType || !(multipartRegex.test(contentType) || urlencodedRegex.test(contentType))) {
+          break;
+        }
+        let formData;
+        if (c.req.bodyCache.formData) {
+          formData = await c.req.bodyCache.formData;
+        } else {
+          try {
+            const arrayBuffer = await c.req.arrayBuffer();
+            formData = await bufferToFormData(arrayBuffer, contentType);
+            c.req.bodyCache.formData = formData;
+          } catch (e) {
+            let message = "Malformed FormData request.";
+            message += e instanceof Error ? ` ${e.message}` : ` ${String(e)}`;
+            throw new HTTPException(400, { message });
+          }
+        }
+        const form = /* @__PURE__ */ Object.create(null);
+        formData.forEach((value2, key) => {
+          if (key.endsWith("[]")) {
+            ;
+            (form[key] ??= []).push(value2);
+          } else if (Array.isArray(form[key])) {
+            ;
+            form[key].push(value2);
+          } else if (Object.hasOwn(form, key)) {
+            form[key] = [form[key], value2];
+          } else {
+            form[key] = value2;
+          }
+        });
+        value = form;
+        break;
+      }
+      case "query":
+        value = Object.fromEntries(
+          Object.entries(c.req.queries()).map(([k, v]) => {
+            return v.length === 1 ? [k, v[0]] : [k, v];
+          })
+        );
+        break;
+      case "param":
+        value = c.req.param();
+        break;
+      case "header":
+        value = c.req.header();
+        break;
+      case "cookie":
+        value = getCookie(c);
+        break;
+    }
+    const res = await validationFunc(value, c);
+    if (res instanceof Response) {
+      return res;
+    }
+    c.req.addValidatedData(target, res);
+    return await next();
+  };
+}, "validator");
 
 // ../../node_modules/.pnpm/@hono+zod-validator@0.4.3_hono@4.12.25_zod@3.25.76/node_modules/@hono/zod-validator/dist/index.js
 var zValidator = /* @__PURE__ */ __name((target, schema, hook) => (
@@ -13224,7 +13225,6 @@ var PUBLISH_STATUS = {
   PUBLISHED: "published",
   FAILED: "failed"
 };
-var IMMEDIATE_PUBLISH_TOLERANCE_MS = 3e4;
 
 // src/shared/utils.ts
 function uuid() {
@@ -13273,9 +13273,9 @@ __name(paginatedResponse, "paginatedResponse");
 
 // src/modules/auth/auth.service.ts
 var AuthService = class {
-  constructor(db, secret) {
+  constructor(db, config2) {
     this.db = db;
-    this.secret = secret;
+    this.config = config2;
   }
   static {
     __name(this, "AuthService");
@@ -13348,7 +13348,7 @@ var AuthService = class {
   }
   async verifyToken(token) {
     try {
-      const key = await this.importKey(this.secret);
+      const key = await this.importKey(this.config.jwtSecret);
       const payload = await crypto.subtle.verify(
         { name: "HMAC", hash: "SHA-256" },
         key,
@@ -13375,7 +13375,7 @@ var AuthService = class {
     const encodedHeader = btoa(JSON.stringify(header));
     const encodedPayload = btoa(JSON.stringify(payload));
     const signingInput = `${encodedHeader}.${encodedPayload}`;
-    const key = await this.importKey(this.secret);
+    const key = await this.importKey(this.config.jwtSecret);
     const signature = await crypto.subtle.sign(
       { name: "HMAC", hash: "SHA-256" },
       key,
@@ -13406,6 +13406,8 @@ var AuthService = class {
     );
   }
 };
+
+// src/middlewares/auth.middleware.ts
 function createAuthMiddleware(authService) {
   return async (c, next) => {
     const apiKey = c.req.header("x-api-key");
@@ -13432,10 +13434,140 @@ function createAuthMiddleware(authService) {
 }
 __name(createAuthMiddleware, "createAuthMiddleware");
 
+// src/middlewares/internal-auth.middleware.ts
+function requireInternalAuth(internalToken) {
+  return async (c, next) => {
+    const auth = c.req.header("Authorization");
+    if (!auth?.startsWith("Internal ")) {
+      return errorResponse("Unauthorized", 401);
+    }
+    if (auth.slice(9) !== internalToken) {
+      return errorResponse("Invalid Internal Token", 401);
+    }
+    c.set("userId", "internal");
+    return next();
+  };
+}
+__name(requireInternalAuth, "requireInternalAuth");
+function tryInternalAuth(internalToken) {
+  return async (c, next) => {
+    const auth = c.req.header("Authorization");
+    if (auth?.startsWith("Internal ") && auth.slice(9) === internalToken) {
+      c.set("userId", "internal");
+    }
+    return next();
+  };
+}
+__name(tryInternalAuth, "tryInternalAuth");
+
+// ../../node_modules/.pnpm/hono@4.12.25/node_modules/hono/dist/middleware/cors/index.js
+var cors = /* @__PURE__ */ __name((options) => {
+  const opts = {
+    origin: "*",
+    allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH"],
+    allowHeaders: [],
+    exposeHeaders: [],
+    ...options
+  };
+  const findAllowOrigin = ((optsOrigin) => {
+    if (typeof optsOrigin === "string") {
+      if (optsOrigin === "*") {
+        return () => optsOrigin;
+      } else {
+        return (origin) => optsOrigin === origin ? origin : null;
+      }
+    } else if (typeof optsOrigin === "function") {
+      return optsOrigin;
+    } else {
+      return (origin) => optsOrigin.includes(origin) ? origin : null;
+    }
+  })(opts.origin);
+  const findAllowMethods = ((optsAllowMethods) => {
+    if (typeof optsAllowMethods === "function") {
+      return optsAllowMethods;
+    } else if (Array.isArray(optsAllowMethods)) {
+      return () => optsAllowMethods;
+    } else {
+      return () => [];
+    }
+  })(opts.allowMethods);
+  return /* @__PURE__ */ __name(async function cors2(c, next) {
+    function set(key, value) {
+      c.res.headers.set(key, value);
+    }
+    __name(set, "set");
+    const allowOrigin = await findAllowOrigin(c.req.header("origin") || "", c);
+    if (allowOrigin) {
+      set("Access-Control-Allow-Origin", allowOrigin);
+    }
+    if (opts.credentials) {
+      set("Access-Control-Allow-Credentials", "true");
+    }
+    if (opts.exposeHeaders?.length) {
+      set("Access-Control-Expose-Headers", opts.exposeHeaders.join(","));
+    }
+    if (c.req.method === "OPTIONS") {
+      if (opts.origin !== "*") {
+        set("Vary", "Origin");
+      }
+      if (opts.maxAge != null) {
+        set("Access-Control-Max-Age", opts.maxAge.toString());
+      }
+      const allowMethods = await findAllowMethods(c.req.header("origin") || "", c);
+      if (allowMethods.length) {
+        set("Access-Control-Allow-Methods", allowMethods.join(","));
+      }
+      let headers = opts.allowHeaders;
+      if (!headers?.length) {
+        const requestHeaders = c.req.header("Access-Control-Request-Headers");
+        if (requestHeaders) {
+          headers = requestHeaders.split(/\s*,\s*/);
+        }
+      }
+      if (headers?.length) {
+        set("Access-Control-Allow-Headers", headers.join(","));
+        c.res.headers.append("Vary", "Access-Control-Request-Headers");
+      }
+      c.res.headers.delete("Content-Length");
+      c.res.headers.delete("Content-Type");
+      return new Response(null, {
+        headers: c.res.headers,
+        status: 204,
+        statusText: "No Content"
+      });
+    }
+    await next();
+    if (opts.origin !== "*") {
+      c.header("Vary", "Origin", { append: true });
+    }
+  }, "cors2");
+}, "cors");
+
+// src/middlewares/cors.middleware.ts
+var corsMiddleware = cors({
+  origin: "*",
+  allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowHeaders: ["Content-Type", "Authorization", "x-api-key"],
+  exposeHeaders: ["x-request-id"],
+  maxAge: 86400
+});
+
+// src/middlewares/request-logger.middleware.ts
+function requestLogger() {
+  return async (c, next) => {
+    const start = Date.now();
+    c.res.headers.set("x-request-id", crypto.randomUUID());
+    await next();
+    const ms = Date.now() - start;
+    if (ms > 1e3) console.log(`[SLOW] ${c.req.method} ${c.req.path} ${ms}ms`);
+  };
+}
+__name(requestLogger, "requestLogger");
+
 // src/modules/auth/auth.routes.ts
-function createAuthRoutes(secret) {
+function createAuthRoutes(config2) {
   const auth = new Hono2();
-  const getService = /* @__PURE__ */ __name((c) => new AuthService(createDb(c.env.DB), secret), "getService");
+  const getService = /* @__PURE__ */ __name((c) => new AuthService(createDb(c.env.DB), config2), "getService");
   auth.post("/register", zValidator("json", registerSchema), async (c) => {
     const body = c.req.valid("json");
     const service = getService(c);
@@ -13447,10 +13579,10 @@ function createAuthRoutes(secret) {
     return service.login(body.email, body.password);
   });
   const authenticated = new Hono2();
-  const authMiddleware = /* @__PURE__ */ __name((c, next) => {
-    return createAuthMiddleware(getService(c))(c, next);
-  }, "authMiddleware");
-  authenticated.use("*", authMiddleware);
+  authenticated.use("*", (c, next) => {
+    const service = getService(c);
+    return createAuthMiddleware(service)(c, next);
+  });
   authenticated.get("/profile", async (c) => {
     const service = getService(c);
     const payload = await service.verifyToken(
@@ -13584,9 +13716,10 @@ __name(createAccountRoutes, "createAccountRoutes");
 
 // src/modules/publish/publish.service.ts
 var PublishService = class {
-  constructor(db, env2) {
+  constructor(db, config2, queue2) {
     this.db = db;
-    this.env = env2;
+    this.config = config2;
+    this.queue = queue2;
   }
   static {
     __name(this, "PublishService");
@@ -13620,9 +13753,9 @@ var PublishService = class {
       createdAt: ts,
       updatedAt: ts
     });
-    const isImmediate = Math.abs(effectivePublishTime - ts) <= IMMEDIATE_PUBLISH_TOLERANCE_MS;
+    const isImmediate = Math.abs(effectivePublishTime - ts) <= this.config.immediateToleranceMs;
     if (isImmediate) {
-      await this.enqueuePublish(recordId, platform2, data.accountId, 3, data);
+      await this.enqueuePublish(recordId, platform2, data.accountId, this.config.defaultMaxRetries, data);
       return jsonResponse({ id: recordId, queueId, status: PUBLISH_STATUS.QUEUED, immediate: true });
     }
     return jsonResponse({ id: recordId, queueId, status: PUBLISH_STATUS.WAITING, immediate: false, publishTime: effectivePublishTime });
@@ -13636,7 +13769,7 @@ var PublishService = class {
       maxRetries,
       params
     };
-    const msg = await this.env.PUBLISH_QUEUE.send(jobData);
+    const msg = await this.queue.send(jobData);
     const msgId = msg?.id || `${recordId}-${now()}`;
     await this.db.update(publishRecords).set({ status: PUBLISH_STATUS.QUEUED, queueMessageId: msgId, updatedAt: now() }).where(eq(publishRecords.id, recordId));
     return msgId;
@@ -13690,9 +13823,9 @@ var PublishService = class {
 };
 
 // src/modules/publish/publish.routes.ts
-function createPublishRoutes() {
+function createPublishRoutes(config2) {
   const publish = new Hono2();
-  const getService = /* @__PURE__ */ __name((c) => new PublishService(createDb(c.env.DB), c.env), "getService");
+  const getService = /* @__PURE__ */ __name((c) => new PublishService(createDb(c.env.DB), config2, c.env.PUBLISH_QUEUE), "getService");
   publish.post("/", zValidator("json", createPublishSchema), async (c) => {
     const body = c.req.valid("json");
     const service = getService(c);
@@ -13891,43 +14024,247 @@ function createFileRoutes() {
 }
 __name(createFileRoutes, "createFileRoutes");
 
-// src/modules/platform/bilibili.service.ts
-async function bilibiliPublish(accountId, params) {
-  const accessToken = params._accessToken;
+// src/platforms/bilibili/bilibili.publisher.ts
+import { createHash } from "node:crypto";
+var CHUNK_SIZE = 1024 * 1024 * 5;
+async function generateBilibiliHeaders(accessToken, clientId, clientSecret, body, formHeaders) {
+  const encoder = new TextEncoder();
+  const bodyStr = body ? JSON.stringify(body) : "";
+  const md5Hash = createHash("md5").update(bodyStr).digest("hex");
+  const headers = {
+    Accept: "application/json",
+    "Content-Type": formHeaders ? "multipart/form-data" : "application/json",
+    "x-bili-content-md5": md5Hash,
+    "x-bili-timestamp": String(Math.floor(Date.now() / 1e3)),
+    "x-bili-signature-method": "HMAC-SHA256",
+    "x-bili-signature-nonce": crypto.randomUUID(),
+    "x-bili-accesskeyid": clientId,
+    "x-bili-signature-version": "2.0",
+    "access-token": accessToken,
+    Authorization: ""
+  };
+  const headerStr = Object.keys(headers).filter((k) => k.startsWith("x-bili-")).sort().map((k) => `${k}:${headers[k]}`).join("\n");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(clientSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(headerStr));
+  headers.Authorization = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return headers;
+}
+__name(generateBilibiliHeaders, "generateBilibiliHeaders");
+async function bilibiliRequest(url, options) {
+  const { accessToken, clientId, clientSecret, method = "GET", params, rawBody } = options;
+  const headers = await generateBilibiliHeaders(
+    accessToken,
+    clientId,
+    clientSecret,
+    options.body,
+    options.formHeaders
+  );
+  const requestUrl = params ? `${url}?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()}` : url;
+  const fetchOptions = {
+    method,
+    headers
+  };
+  if (rawBody) {
+    fetchOptions.body = rawBody;
+  } else if (options.body) {
+    fetchOptions.body = JSON.stringify(options.body);
+  }
+  const response = await fetch(requestUrl, fetchOptions);
+  const data = await response.json();
+  if (data.code !== 0) {
+    throw new Error(`B\u7AD9 API \u9519\u8BEF [${data.code}]: ${data.message || JSON.stringify(data)}`);
+  }
+  return data;
+}
+__name(bilibiliRequest, "bilibiliRequest");
+async function uploadCover(coverUrl, accessToken, clientId, clientSecret) {
+  const imageRes = await fetch(coverUrl);
+  if (!imageRes.ok) throw new Error(`\u4E0B\u8F7D\u5C01\u9762\u5931\u8D25: HTTP ${imageRes.status}`);
+  const imageBuf = await imageRes.arrayBuffer();
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(imageBuf)));
+  const boundary = "----BilibiliCover" + crypto.randomUUID();
+  const encoder = new TextEncoder();
+  const parts = [];
+  parts.push(encoder.encode(`--${boundary}\r
+`));
+  parts.push(encoder.encode('Content-Disposition: form-data; name="file"; filename="cover.jpg"\r\n'));
+  parts.push(encoder.encode("Content-Type: image/jpeg\r\n\r\n"));
+  parts.push(new Uint8Array(imageBuf));
+  parts.push(encoder.encode(`\r
+--${boundary}--\r
+`));
+  const totalLen = parts.reduce((sum, p) => sum + p.length, 0);
+  const formBody = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const part of parts) {
+    formBody.set(part, offset);
+    offset += part.length;
+  }
+  const headers = await generateBilibiliHeaders(accessToken, clientId, clientSecret, void 0, true);
+  const res = await fetch("https://member.bilibili.com/arcopen/fn/archive/cover/upload", {
+    method: "POST",
+    headers: {
+      ...headers,
+      "Content-Type": `multipart/form-data; boundary=${boundary}`
+    },
+    body: formBody
+  });
+  const data = await res.json();
+  if (data.code !== 0) throw new Error(`\u5C01\u9762\u4E0A\u4F20\u5931\u8D25: ${data.message}`);
+  return data.data.url;
+}
+__name(uploadCover, "uploadCover");
+async function videoInit(fileName, accessToken, clientId, clientSecret) {
+  const res = await bilibiliRequest(
+    "https://member.bilibili.com/arcopen/fn/archive/video/init",
+    {
+      accessToken,
+      clientId,
+      clientSecret,
+      method: "POST",
+      body: { name: fileName, utype: "0" }
+    }
+  );
+  return res.data.upload_token;
+}
+__name(videoInit, "videoInit");
+async function uploadVideoPart(chunk, uploadToken, partNumber, accessToken, clientId, clientSecret) {
+  const res = await bilibiliRequest(
+    "https://openupos.bilivideo.com/video/v2/part/upload",
+    {
+      accessToken,
+      clientId,
+      clientSecret,
+      method: "POST",
+      params: { upload_token: uploadToken, part_number: partNumber },
+      rawBody: chunk
+    }
+  );
+  return res.data.etag;
+}
+__name(uploadVideoPart, "uploadVideoPart");
+async function videoComplete(uploadToken, accessToken, clientId, clientSecret) {
+  await bilibiliRequest(
+    "https://member.bilibili.com/arcopen/fn/archive/video/complete",
+    {
+      accessToken,
+      clientId,
+      clientSecret,
+      method: "POST",
+      params: { upload_token: uploadToken }
+    }
+  );
+}
+__name(videoComplete, "videoComplete");
+async function archiveAdd(uploadToken, data, accessToken, clientId, clientSecret) {
+  const body = { ...data };
+  const res = await bilibiliRequest(
+    "https://member.bilibili.com/arcopen/fn/archive/add-by-utoken",
+    {
+      accessToken,
+      clientId,
+      clientSecret,
+      method: "POST",
+      params: { upload_token: uploadToken },
+      body
+    }
+  );
+  return { resourceId: res.data.resource_id, shareId: res.data.share_id };
+}
+__name(archiveAdd, "archiveAdd");
+async function uploadVideo(videoUrl, accessToken, clientId, clientSecret) {
+  const headRes = await fetch(videoUrl, { method: "HEAD" });
+  const contentLength = parseInt(headRes.headers.get("Content-Length") || "0", 10);
+  if (contentLength === 0) throw new Error("\u65E0\u6CD5\u83B7\u53D6\u89C6\u9891\u6587\u4EF6\u5927\u5C0F");
+  const urlObj = new URL(videoUrl);
+  const pathParts = urlObj.pathname.split("/");
+  const fileName = pathParts[pathParts.length - 1] || `video_${Date.now()}.mp4`;
+  const uploadToken = await videoInit(fileName, accessToken, clientId, clientSecret);
+  const chunkCount = Math.ceil(contentLength / CHUNK_SIZE);
+  for (let seq = 1; seq <= chunkCount; seq++) {
+    const start = (seq - 1) * CHUNK_SIZE;
+    const end = Math.min(seq * CHUNK_SIZE - 1, contentLength - 1);
+    const chunkRes = await fetch(videoUrl, {
+      headers: { Range: `bytes=${start}-${end}` }
+    });
+    if (!chunkRes.ok) throw new Error(`\u4E0B\u8F7D\u89C6\u9891\u5206\u7247 ${seq} \u5931\u8D25: HTTP ${chunkRes.status}`);
+    const chunk = await chunkRes.arrayBuffer();
+    await uploadVideoPart(chunk, uploadToken, seq, accessToken, clientId, clientSecret);
+  }
+  await videoComplete(uploadToken, accessToken, clientId, clientSecret);
+  return uploadToken;
+}
+__name(uploadVideo, "uploadVideo");
+async function bilibiliPublish(accessToken, params, config2) {
   if (!accessToken) {
     return { success: false, error: "B\u7AD9 access token \u672A\u914D\u7F6E" };
   }
-  const title2 = params.title;
-  const desc2 = params.description;
+  if (!config2.clientId || !config2.clientSecret) {
+    return { success: false, error: "B\u7AD9 clientId/clientSecret \u672A\u914D\u7F6E" };
+  }
+  const tid = params.tid ?? 17;
+  const copyright = params.copyright ?? 2;
+  const source = params.source ?? params.description ?? params.title;
   try {
-    const body = {
-      access_key: accessToken,
-      title: title2,
-      desc: desc2 || "",
-      copyright: 2,
-      source: desc2 || title2,
-      tid: 17,
-      no_reprint: 1,
-      open_elec: 0
-    };
     if (params.videoUrl) {
-      body.videos = [{ title: title2, filename: `aitoearn_${Date.now()}.mp4`, desc: desc2 || "" }];
+      const cover = params.coverUrl ? await uploadCover(params.coverUrl, accessToken, config2.clientId, config2.clientSecret) : "";
+      const videoUploadToken = await uploadVideo(
+        params.videoUrl,
+        accessToken,
+        config2.clientId,
+        config2.clientSecret
+      );
+      const { resourceId, shareId } = await archiveAdd(
+        videoUploadToken,
+        {
+          title: params.title,
+          cover,
+          desc: params.description || "",
+          tid,
+          copyright,
+          source,
+          no_reprint: 1,
+          open_elec: 0,
+          tag: params.tags?.join(",") || ""
+        },
+        accessToken,
+        config2.clientId,
+        config2.clientSecret
+      );
+      return {
+        success: true,
+        workUrl: `https://www.bilibili.com/video/${resourceId}`,
+        platformWorkId: resourceId,
+        shareId
+      };
     }
+    const body = new URLSearchParams({
+      access_key: accessToken,
+      title: params.title,
+      desc: params.description || "",
+      copyright: String(copyright),
+      source,
+      tid: String(tid),
+      no_reprint: "1",
+      open_elec: "0"
+    });
     const response = await fetch("https://member.bilibili.com/x/vu/client/add", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(
-        Object.fromEntries(
-          Object.entries(body).map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v)])
-        )
-      )
+      body
     });
     const data = await response.json();
     if (data.code === 0) {
       return {
         success: true,
         workUrl: `https://www.bilibili.com/video/av${data.data?.aid || ""}`,
-        platformWorkId: String(data.data?.aid || "")
+        platformWorkId: data.data?.aid ? String(data.data.aid) : ""
       };
     }
     return { success: false, error: `B\u7AD9\u53D1\u5E03\u5931\u8D25: ${data.message || JSON.stringify(data)}` };
@@ -13937,95 +14274,369 @@ async function bilibiliPublish(accountId, params) {
 }
 __name(bilibiliPublish, "bilibiliPublish");
 
-// src/modules/publish/publish.consumer.ts
-var platformPublishers = {
-  bilibili: bilibiliPublish
+// src/platforms/bilibili/bilibili.oauth.ts
+var BILIBILI_OAUTH_AUTHORIZE = "https://member.bilibili.com/platform/login.html";
+var BILIBILI_OAUTH_TOKEN = "https://api.bilibili.com/x/account-oauth2/v1/token";
+var BILIBILI_OAUTH_REFRESH = "https://api.bilibili.com/x/account-oauth2/v1/refresh_token";
+var TOKEN_REFRESH_THRESHOLD_MS = 10 * 60 * 1e3;
+var BilibiliOAuthService = class {
+  constructor(db) {
+    this.db = db;
+  }
+  static {
+    __name(this, "BilibiliOAuthService");
+  }
+  /** 构造 B站 OAuth 授权跳转 URL */
+  getOAuthUrl(clientId, redirectUri, state) {
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: "code",
+      redirect_uri: redirectUri,
+      scope: "all",
+      state
+    });
+    return `${BILIBILI_OAUTH_AUTHORIZE}?${params.toString()}`;
+  }
+  /** 用授权码换取 access_token */
+  async exchangeToken(clientId, clientSecret, code) {
+    const body = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "authorization_code",
+      code
+    });
+    const res = await fetch(BILIBILI_OAUTH_TOKEN, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+    return res.json();
+  }
+  /** 将 B站授权信息保存（或更新）到 accounts 表 */
+  async saveAccount(userId, tokenData) {
+    const platform2 = "bilibili";
+    const platformUid = tokenData.mid;
+    const existing = await this.db.select({ id: accounts.id }).from(accounts).where(
+      and(
+        eq(accounts.userId, userId),
+        eq(accounts.platform, platform2),
+        eq(accounts.platformUid, platformUid)
+      )
+    ).get();
+    const ts = now();
+    const tokenExpiresAt = ts + tokenData.expiresIn * 1e3;
+    if (existing) {
+      await this.db.update(accounts).set({
+        accessToken: tokenData.accessToken,
+        refreshToken: tokenData.refreshToken,
+        tokenExpiresAt,
+        nickname: tokenData.name,
+        avatar: tokenData.avatar || null,
+        updatedAt: ts
+      }).where(eq(accounts.id, existing.id));
+      return jsonResponse({
+        id: existing.id,
+        platform: platform2,
+        platformUid,
+        nickname: tokenData.name,
+        updated: true
+      });
+    }
+    const id = uuid();
+    await this.db.insert(accounts).values({
+      id,
+      userId,
+      platform: platform2,
+      platformUid,
+      nickname: tokenData.name,
+      avatar: tokenData.avatar || null,
+      accessToken: tokenData.accessToken,
+      refreshToken: tokenData.refreshToken,
+      tokenExpiresAt,
+      createdAt: ts,
+      updatedAt: ts
+    });
+    return jsonResponse({
+      id,
+      platform: platform2,
+      platformUid,
+      nickname: tokenData.name,
+      created: true
+    });
+  }
+  // =====================================================================
+  // Token 管理与自动刷新（参照 aitoearn BilibiliService）
+  // =====================================================================
+  /**
+   * 获取账号的有效 access_token。
+   * 如果 token 剩余有效期不足 10 分钟，自动调用 B站 refresh API 续期。
+   */
+  async getAccountAccessToken(accountId, clientId, clientSecret) {
+    const account = await this.db.select({
+      accessToken: accounts.accessToken,
+      refreshToken: accounts.refreshToken,
+      tokenExpiresAt: accounts.tokenExpiresAt
+    }).from(accounts).where(eq(accounts.id, accountId)).get();
+    if (!account || !account.accessToken) {
+      throw new Error(`B\u7AD9\u8D26\u53F7\u4E0D\u5B58\u5728\u6216\u672A\u6388\u6743: ${accountId}`);
+    }
+    const remaining = (account.tokenExpiresAt || 0) - now();
+    if (remaining > TOKEN_REFRESH_THRESHOLD_MS) {
+      return account.accessToken;
+    }
+    if (!account.refreshToken) {
+      throw new Error(`B\u7AD9 token \u5DF2\u8FC7\u671F\u4E14\u65E0 refresh_token\uFF0C\u8BF7\u91CD\u65B0\u6388\u6743: ${accountId}`);
+    }
+    return this.refreshAccessToken(accountId, account.refreshToken, clientId, clientSecret);
+  }
+  /**
+   * 用 refresh_token 刷新 access_token。
+   */
+  async refreshAccessToken(accountId, refreshToken, clientId, clientSecret) {
+    const body = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken
+    });
+    const res = await fetch(BILIBILI_OAUTH_REFRESH, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+    const data = await res.json();
+    if (data.code !== 0 || !data.data) {
+      throw new Error(`B\u7AD9 token \u5237\u65B0\u5931\u8D25: ${data.message || "\u672A\u77E5\u9519\u8BEF"}`);
+    }
+    const ts = now();
+    await this.db.update(accounts).set({
+      accessToken: data.data.access_token,
+      refreshToken: data.data.refresh_token,
+      tokenExpiresAt: ts + data.data.expires_in * 1e3,
+      updatedAt: ts
+    }).where(eq(accounts.id, accountId));
+    return data.data.access_token;
+  }
 };
-var publish_consumer_default = {
-  async queue(batch, env2) {
-    const db = createDb(env2.DB);
-    const publishService = new PublishService(db, env2);
-    for (const msg of batch.messages) {
-      const { recordId, platform: platform2, accountId, retryCount, maxRetries } = msg.body;
+
+// src/platforms/bilibili/bilibili.routes.ts
+function createBilibiliRoutes(config2, internalToken) {
+  const bilibili = new Hono2();
+  const getOAuthService = /* @__PURE__ */ __name((c) => new BilibiliOAuthService(createDb(c.env.DB)), "getOAuthService");
+  bilibili.get("/bilibili/oauth/authorize", (c) => {
+    if (!config2.clientId) return errorResponse("BILIBILI_CLIENT_ID not configured", 500);
+    const redirectUri = config2.redirectUri || `${new URL(c.req.url).origin}/platforms/bilibili/oauth/callback`;
+    const userId = c.req.query("userId") || "";
+    const statePayload = encodeURIComponent(
+      JSON.stringify({ state: crypto.randomUUID(), userId, redirectUri })
+    );
+    const service = getOAuthService(c);
+    const url = service.getOAuthUrl(config2.clientId, redirectUri, statePayload);
+    return c.redirect(url);
+  });
+  bilibili.get("/bilibili/oauth/callback", async (c) => {
+    const code = c.req.query("code");
+    const stateParam = c.req.query("state");
+    if (!code) return errorResponse("Missing authorization code", 400);
+    let userId = "internal";
+    let redirectUri = `${new URL(c.req.url).origin}`;
+    if (stateParam) {
       try {
-        await publishService.markPublishing(recordId);
+        const stateData = JSON.parse(decodeURIComponent(stateParam));
+        if (stateData.userId) userId = stateData.userId;
+        if (stateData.redirectUri) redirectUri = stateData.redirectUri;
+      } catch {
+      }
+    }
+    if (!config2.clientId || !config2.clientSecret) return errorResponse("B\u7AD9\u51ED\u636E\u672A\u914D\u7F6E", 500);
+    const service = getOAuthService(c);
+    const tokenRes = await service.exchangeToken(config2.clientId, config2.clientSecret, code);
+    if (tokenRes.code !== 0 || !tokenRes.data) {
+      return errorResponse(`B\u7AD9\u6388\u6743\u5931\u8D25: ${tokenRes.message || "\u672A\u77E5\u9519\u8BEF"}`, 502);
+    }
+    const tokenInfo = tokenRes.data.token_info;
+    const mid = tokenInfo?.mid || "";
+    const name = tokenInfo?.name || `B\u7AD9\u7528\u6237_${mid}`;
+    const result = await service.saveAccount(userId, {
+      accessToken: tokenRes.data.access_token,
+      refreshToken: tokenRes.data.refresh_token,
+      expiresIn: tokenRes.data.expires_in,
+      mid,
+      name,
+      avatar: tokenInfo?.avatar
+    });
+    const resultData = await result.json();
+    const returnUrl = new URL(redirectUri);
+    returnUrl.searchParams.set("relay_callback", "1");
+    returnUrl.searchParams.set("account_id", resultData.id || "");
+    returnUrl.searchParams.set("platform", "bilibili");
+    returnUrl.searchParams.set("nickname", name);
+    return c.redirect(returnUrl.toString());
+  });
+  bilibili.post(
+    "/bilibili/publish",
+    requireInternalAuth(internalToken),
+    async (c) => {
+      const body = await c.req.json();
+      if (!body.title) return errorResponse("title is required", 400);
+      const db = createDb(c.env.DB);
+      const oauthService = new BilibiliOAuthService(db);
+      let accessToken = body.accessToken;
+      let resolvedAccountId = body.accountId;
+      if (!accessToken && resolvedAccountId) {
+        try {
+          accessToken = await oauthService.getAccountAccessToken(
+            resolvedAccountId,
+            config2.clientId,
+            config2.clientSecret
+          );
+        } catch (err) {
+          return errorResponse(err.message, 401);
+        }
+      }
+      if (!accessToken) return errorResponse("accessToken or accountId required", 400);
+      if (!config2.clientId || !config2.clientSecret) {
+        return errorResponse("B\u7AD9 clientId/clientSecret \u672A\u914D\u7F6E", 500);
+      }
+      const result = await bilibiliPublish(accessToken, {
+        title: body.title,
+        description: body.description,
+        videoUrl: body.videoUrl,
+        coverUrl: body.coverUrl,
+        tags: body.tags,
+        tid: body.tid,
+        copyright: body.copyright
+      }, { clientId: config2.clientId, clientSecret: config2.clientSecret });
+      if (!result.success) return errorResponse(result.error || "\u53D1\u5E03\u5931\u8D25", 502);
+      return jsonResponse(result);
+    }
+  );
+  bilibili.post("/bilibili/webhooks", async (c) => {
+    const body = await c.req.json();
+    if (!body.content?.video_id) {
+      return jsonResponse({ code: 0, message: "ignored" });
+    }
+    const db = createDb(c.env.DB);
+    const videoId = body.content.video_id;
+    const shareId = body.content.share_id;
+    if (shareId) {
+      const records = await db.select().from(publishRecords).where(eq(publishRecords.platform, "bilibili")).all();
+      const matched = records.find(
+        (r) => r.status === PUBLISH_STATUS.PUBLISHING && r.platformWorkId === shareId
+      );
+      if (matched) {
+        await db.update(publishRecords).set({
+          status: PUBLISH_STATUS.PUBLISHED,
+          platformWorkId: videoId,
+          workUrl: `https://www.bilibili.com/video/${videoId}`,
+          updatedAt: Date.now()
+        }).where(eq(publishRecords.id, matched.id));
+      }
+    }
+    return jsonResponse({ code: 0, message: "ok" });
+  });
+  return bilibili;
+}
+__name(createBilibiliRoutes, "createBilibiliRoutes");
+
+// src/modules/publish/publish.consumer.ts
+var platformPublishers = {};
+async function queue(batch, env2) {
+  const db = createDb(env2.DB);
+  const cfg = createAppConfig(env2);
+  const publishService = new PublishService(db, cfg.publish, env2.PUBLISH_QUEUE);
+  const oauthService = new BilibiliOAuthService(db);
+  for (const msg of batch.messages) {
+    const { recordId, platform: platform2, accountId, retryCount, maxRetries } = msg.body;
+    try {
+      await publishService.markPublishing(recordId);
+      let result;
+      if (platform2 === "bilibili") {
+        let accessToken;
+        try {
+          accessToken = await oauthService.getAccountAccessToken(
+            accountId,
+            cfg.platforms.bilibili.clientId,
+            cfg.platforms.bilibili.clientSecret
+          );
+        } catch {
+          const account = await db.select({ accessToken: accounts.accessToken }).from(accounts).where(eq(accounts.id, accountId)).get();
+          accessToken = account?.accessToken || "";
+        }
+        result = await bilibiliPublish(accessToken, {
+          title: msg.body.params.title || "",
+          description: msg.body.params.description,
+          videoUrl: msg.body.params.videoUrl,
+          coverUrl: msg.body.params.coverUrl,
+          tags: msg.body.params.tags,
+          tid: msg.body.params.tid,
+          copyright: msg.body.params.copyright
+        }, {
+          clientId: cfg.platforms.bilibili.clientId,
+          clientSecret: cfg.platforms.bilibili.clientSecret
+        });
+      } else {
         const publisher = platformPublishers[platform2];
         if (!publisher) {
           await publishService.markPublishFailed(recordId, `\u4E0D\u652F\u6301\u7684\u5E73\u53F0: ${platform2}`);
           msg.ack();
           continue;
         }
-        const account = await db.select({
-          accessToken: accounts.accessToken
-        }).from(accounts).where(eq(accounts.id, accountId)).get();
+        const account = await db.select({ accessToken: accounts.accessToken }).from(accounts).where(eq(accounts.id, accountId)).get();
         const params = {
           ...msg.body.params,
           _accessToken: account?.accessToken || ""
         };
-        const result = await publisher(accountId, params);
-        if (result.success) {
-          await publishService.markPublishSuccess(recordId, result.workUrl || "", result.platformWorkId);
-          msg.ack();
-        } else {
-          if (retryCount + 1 < maxRetries) {
-            await publishService.incrementRetry(recordId, retryCount);
-            msg.retry({ delaySeconds: Math.pow(2, retryCount + 1) * 5 });
-          } else {
-            await publishService.markPublishFailed(recordId, result.error || "\u53D1\u5E03\u5931\u8D25");
-            msg.ack();
-          }
-        }
-      } catch (err) {
+        result = await publisher(accountId, params);
+      }
+      if (result.success) {
+        await publishService.markPublishSuccess(
+          recordId,
+          result.workUrl || "",
+          result.platformWorkId
+        );
+        msg.ack();
+      } else {
         if (retryCount + 1 < maxRetries) {
           await publishService.incrementRetry(recordId, retryCount);
           msg.retry({ delaySeconds: Math.pow(2, retryCount + 1) * 5 });
         } else {
-          await publishService.markPublishFailed(recordId, err.message || "\u672A\u77E5\u9519\u8BEF");
+          await publishService.markPublishFailed(recordId, result.error || "\u53D1\u5E03\u5931\u8D25");
           msg.ack();
         }
       }
+    } catch (err) {
+      if (retryCount + 1 < maxRetries) {
+        await publishService.incrementRetry(recordId, retryCount);
+        msg.retry({ delaySeconds: Math.pow(2, retryCount + 1) * 5 });
+      } else {
+        await publishService.markPublishFailed(recordId, err.message || "\u672A\u77E5\u9519\u8BEF");
+        msg.ack();
+      }
     }
   }
-};
+}
+__name(queue, "queue");
 
 // src/index.ts
 async function createApp(env2) {
   const app = new Hono2();
-  app.use("*", cors({
-    origin: "*",
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization", "x-api-key"],
-    exposeHeaders: ["x-request-id"],
-    maxAge: 86400
-  }));
-  app.use("*", async (c, next) => {
-    const start = Date.now();
-    c.res.headers.set("x-request-id", crypto.randomUUID());
-    await next();
-    const ms = Date.now() - start;
-    if (ms > 1e3) console.log(`[SLOW] ${c.req.method} ${c.req.path} ${ms}ms`);
-  });
+  app.use("*", corsMiddleware);
+  app.use("*", requestLogger());
+  const cfg = createAppConfig(env2);
   const db = createDb(env2.DB);
-  const authService = new AuthService(db, env2.JWT_SECRET);
+  const authService = new AuthService(db, cfg.auth);
   const authMiddleware = createAuthMiddleware(authService);
-  app.route("/auth", createAuthRoutes(env2.JWT_SECRET));
+  app.route("/auth", createAuthRoutes(cfg.auth));
   const api = new Hono2();
+  api.use("*", tryInternalAuth(cfg.auth.internalToken));
   api.use("*", authMiddleware);
-  api.use("*", async (c, next) => {
-    const auth = c.req.header("Authorization");
-    if (auth?.startsWith("Internal ")) {
-      if (auth.slice(9) === env2.INTERNAL_TOKEN) {
-        c.set("userId", "internal");
-        return next();
-      }
-    }
-    return next();
-  });
   api.route("/accounts", createAccountRoutes());
-  api.route("/publish", createPublishRoutes());
+  api.route("/publish", createPublishRoutes(cfg.publish));
   api.route("/credit", createCreditRoutes());
   api.route("/files", createFileRoutes());
   app.route("/api", api);
+  app.route("/platforms", createBilibiliRoutes(cfg.platforms.bilibili, cfg.auth.internalToken));
   app.get("/health", (c) => c.json({ status: "ok", timestamp: Date.now() }));
   app.notFound((c) => errorResponse(`Not Found: ${c.req.method} ${c.req.path}`, 404));
   app.onError((err, c) => {
@@ -14035,11 +14646,13 @@ async function createApp(env2) {
   return app;
 }
 __name(createApp, "createApp");
-var queue = publish_consumer_default.queue;
 var src_default = {
   async fetch(request, env2, ctx) {
     const app = await createApp(env2);
     return app.fetch(request, env2, ctx);
+  },
+  async queue(batch, env2) {
+    await queue(batch, env2);
   }
 };
 
@@ -14084,7 +14697,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env2, _ctx, middlewareCtx
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-0XxYtd/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-qSTeuZ/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -14116,7 +14729,7 @@ function __facade_invoke__(request, env2, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-0XxYtd/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-qSTeuZ/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
@@ -14215,7 +14828,6 @@ var middleware_loader_entry_default = WRAPPED_ENTRY;
 export {
   __INTERNAL_WRANGLER_MIDDLEWARE__,
   createApp,
-  middleware_loader_entry_default as default,
-  queue
+  middleware_loader_entry_default as default
 };
 //# sourceMappingURL=index.js.map
