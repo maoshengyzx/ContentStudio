@@ -13818,21 +13818,25 @@ async function douyinPublish(params, config2) {
       getShareId(clientToken),
       getOpenTicket(clientToken)
     ]);
-    const titleHashtagList = params.topics?.length ? params.topics.map((tag, i) => {
-      const name = tag.startsWith("#") ? tag.slice(1) : tag;
-      const hashtag = ` #${name}`;
-      const start = params.title.length + (i > 0 ? params.topics.slice(0, i).join("").length : 0);
-      return { name, start: start + i * 2 };
-    }) : void 0;
+    let fullTitle = params.title;
+    const titleHashtagEntries = [];
+    if (params.topics?.length) {
+      for (const tag of params.topics) {
+        const name = tag.startsWith("#") ? tag.slice(1) : tag;
+        const hashtagStr = ` #${name}`;
+        titleHashtagEntries.push({ name, start: fullTitle.length + 1 });
+        fullTitle += hashtagStr;
+      }
+    }
     const permalink = generateShareSchema({
       clientKey: config2.clientId,
       shareId,
       ticket,
-      title: params.title,
+      title: fullTitle,
       videoPath: params.videoUrl,
       imageListPath: params.imageUrls,
       hashtagList: params.topics,
-      titleHashtagList,
+      titleHashtagList: titleHashtagEntries.length ? titleHashtagEntries : void 0,
       downloadType: params.downloadType ?? 1,
       privateStatus: params.privateStatus ?? 0
     });
@@ -14998,7 +15002,7 @@ async function queue(batch, env2) {
           clientSecret: cfg.platforms.bilibili.clientSecret
         });
       } else if (platform2 === "douyin") {
-        result = await douyinPublish({
+        const douyinRes = await douyinPublish({
           title: msg.body.params.title || "",
           description: msg.body.params.description,
           videoUrl: msg.body.params.videoUrl,
@@ -15008,6 +15012,12 @@ async function queue(batch, env2) {
           clientId: cfg.platforms.douyin.clientId,
           clientSecret: cfg.platforms.douyin.clientSecret
         });
+        result = {
+          success: douyinRes.success,
+          workUrl: douyinRes.permalink,
+          platformWorkId: douyinRes.shareId,
+          error: douyinRes.error
+        };
       } else {
         const publisher = platformPublishers[platform2];
         if (!publisher) {

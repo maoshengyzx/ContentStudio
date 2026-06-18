@@ -55,8 +55,8 @@ export async function queue(batch: MessageBatch<PublishJobData>, env: Env) {
           clientSecret: cfg.platforms.bilibili.clientSecret,
         })
       } else if (platform === 'douyin') {
-        // 抖音 Share Schema 重试（如果 PublishService bypass 失败回退到队列）
-        result = await douyinPublish({
+        // douyinPublish 返回 { permalink, shareId } 而不是 { workUrl, platformWorkId }，做映射
+        const douyinRes = await douyinPublish({
           title: (msg.body.params.title as string) || '',
           description: msg.body.params.description as string | undefined,
           videoUrl: msg.body.params.videoUrl as string | undefined,
@@ -66,6 +66,12 @@ export async function queue(batch: MessageBatch<PublishJobData>, env: Env) {
           clientId: cfg.platforms.douyin.clientId,
           clientSecret: cfg.platforms.douyin.clientSecret,
         })
+        result = {
+          success: douyinRes.success,
+          workUrl: douyinRes.permalink,
+          platformWorkId: douyinRes.shareId,
+          error: douyinRes.error,
+        }
       } else {
         const publisher = platformPublishers[platform]
         if (!publisher) {

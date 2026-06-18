@@ -76,6 +76,7 @@ async function douyinRequest<T>(
 
 // =====================================================================
 // ① 获取 Client Token（应用级别 token，有效期 2 小时）
+// TODO: 缓存 clientToken（Redis/D1），避免每次发布都请求抖音 API
 // =====================================================================
 
 async function getClientToken(
@@ -198,24 +199,27 @@ export async function douyinPublish(
       getOpenTicket(clientToken),
     ])
 
-    const titleHashtagList = params.topics?.length
-      ? params.topics.map((tag, i) => {
-          const name = tag.startsWith('#') ? tag.slice(1) : tag
-          const hashtag = ` #${name}`
-          const start = params.title.length + (i > 0 ? params.topics!.slice(0, i).join('').length : 0)
-          return { name, start: start + (i * 2) }  // rough calculation
-        })
-      : undefined
+    // 将话题嵌入 title（参照 aitoearn formatTitle），生成带话题标签的标题
+    let fullTitle = params.title
+    const titleHashtagEntries: { name: string; start: number }[] = []
+    if (params.topics?.length) {
+      for (const tag of params.topics) {
+        const name = tag.startsWith('#') ? tag.slice(1) : tag
+        const hashtagStr = ` #${name}`
+        titleHashtagEntries.push({ name, start: fullTitle.length + 1 }) // +1 跳过空格，指向 # 后第一个字符
+        fullTitle += hashtagStr
+      }
+    }
 
     const permalink = generateShareSchema({
       clientKey: config.clientId,
       shareId,
       ticket,
-      title: params.title,
+      title: fullTitle,
       videoPath: params.videoUrl,
       imageListPath: params.imageUrls,
       hashtagList: params.topics,
-      titleHashtagList,
+      titleHashtagList: titleHashtagEntries.length ? titleHashtagEntries : undefined,
       downloadType: params.downloadType ?? 1,
       privateStatus: params.privateStatus ?? 0,
     })
