@@ -13714,12 +13714,406 @@ function createAccountRoutes() {
 }
 __name(createAccountRoutes, "createAccountRoutes");
 
+// src/platforms/douyin/douyin.publisher.ts
+import { createHash } from "node:crypto";
+var DOUYIN_API = {
+  CLIENT_TOKEN: "https://open.douyin.com/oauth/client_token/",
+  SHARE_ID: "https://open.douyin.com/share-id/",
+  GET_TICKET: "https://open.douyin.com/open/getticket/"
+};
+function randomString(length) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  return Array.from(crypto.getRandomValues(new Uint8Array(length))).map((b) => chars[b % chars.length]).join("");
+}
+__name(randomString, "randomString");
+function md5(str) {
+  return createHash("md5").update(str).digest("hex");
+}
+__name(md5, "md5");
+async function douyinRequest(url, options) {
+  const res = await fetch(url, {
+    method: options.method || "GET",
+    headers: options.headers,
+    body: options.body
+  });
+  const data = await res.json();
+  if (data.message && data.message !== "success") {
+    throw new Error(`\u6296\u97F3 API \u9519\u8BEF: ${data.message}`);
+  }
+  if (data.data?.error_code && data.data.error_code !== 0) {
+    throw new Error(`\u6296\u97F3 API \u9519\u8BEF [${data.data.error_code}]: ${data.data.description || JSON.stringify(data.data)}`);
+  }
+  return data;
+}
+__name(douyinRequest, "douyinRequest");
+async function getClientToken(clientKey, clientSecret) {
+  const body = new URLSearchParams({
+    client_key: clientKey,
+    client_secret: clientSecret,
+    grant_type: "client_credential"
+  });
+  const res = await douyinRequest(
+    DOUYIN_API.CLIENT_TOKEN,
+    { method: "POST", body }
+  );
+  return res.data.access_token;
+}
+__name(getClientToken, "getClientToken");
+async function getShareId(clientToken, defaultHashtag) {
+  const params = new URLSearchParams({ need_callback: "true" });
+  if (defaultHashtag) params.set("default_hashtag", defaultHashtag);
+  const res = await douyinRequest(
+    `${DOUYIN_API.SHARE_ID}?${params.toString()}`,
+    { headers: { "access-token": clientToken } }
+  );
+  return res.data.share_id;
+}
+__name(getShareId, "getShareId");
+async function getOpenTicket(clientToken) {
+  const res = await douyinRequest(
+    DOUYIN_API.GET_TICKET,
+    { headers: { "access-token": clientToken } }
+  );
+  return res.data.ticket;
+}
+__name(getOpenTicket, "getOpenTicket");
+function generateShareSchema(params) {
+  const nonceStr = randomString(32);
+  const timestamp = Math.floor(Date.now() / 1e3);
+  const signStr = `nonce_str=${nonceStr}&ticket=${params.ticket}&timestamp=${timestamp}`;
+  const signature = md5(signStr);
+  const schemaParams = {
+    client_key: params.clientKey,
+    state: params.shareId,
+    nonce_str: nonceStr,
+    title: params.title,
+    timestamp: String(timestamp),
+    signature,
+    share_type: "h5",
+    share_to_publish: "1",
+    download_type: String(params.downloadType),
+    private_status: String(params.privateStatus)
+  };
+  if (params.videoPath) schemaParams.video_path = params.videoPath;
+  if (params.imageListPath?.length) {
+    schemaParams.image_list_path = JSON.stringify(params.imageListPath);
+  }
+  if (params.hashtagList?.length) {
+    schemaParams.hashtag_list = JSON.stringify(params.hashtagList);
+  }
+  if (params.titleHashtagList?.length) {
+    schemaParams.title_hashtag_list = JSON.stringify(params.titleHashtagList);
+  }
+  const query = Object.entries(schemaParams).map(([k, v]) => `${k}=${encodeURIComponent(v).replace(/\+/g, "%20")}`).join("&");
+  return `snssdk1128://openplatform/share?${query}`;
+}
+__name(generateShareSchema, "generateShareSchema");
+async function douyinPublish(params, config2) {
+  if (!config2.clientId || !config2.clientSecret) {
+    return { success: false, error: "\u6296\u97F3 clientId/clientSecret \u672A\u914D\u7F6E" };
+  }
+  try {
+    const clientToken = await getClientToken(config2.clientId, config2.clientSecret);
+    const [shareId, ticket] = await Promise.all([
+      getShareId(clientToken),
+      getOpenTicket(clientToken)
+    ]);
+    const titleHashtagList = params.topics?.length ? params.topics.map((tag, i) => {
+      const name = tag.startsWith("#") ? tag.slice(1) : tag;
+      const hashtag = ` #${name}`;
+      const start = params.title.length + (i > 0 ? params.topics.slice(0, i).join("").length : 0);
+      return { name, start: start + i * 2 };
+    }) : void 0;
+    const permalink = generateShareSchema({
+      clientKey: config2.clientId,
+      shareId,
+      ticket,
+      title: params.title,
+      videoPath: params.videoUrl,
+      imageListPath: params.imageUrls,
+      hashtagList: params.topics,
+      titleHashtagList,
+      downloadType: params.downloadType ?? 1,
+      privateStatus: params.privateStatus ?? 0
+    });
+    return {
+      success: true,
+      permalink,
+      shareId
+    };
+  } catch (err) {
+    return { success: false, error: `\u6296\u97F3 API \u8C03\u7528\u5F02\u5E38: ${err.message}` };
+  }
+}
+__name(douyinPublish, "douyinPublish");
+
+// src/platforms/douyin/douyin.oauth.ts
+var DOUYIN_OAUTH_AUTHORIZE = "https://open.douyin.com/platform/oauth/connect";
+var DOUYIN_OAUTH_TOKEN = "https://open.douyin.com/oauth/access_token/";
+var DOUYIN_OAUTH_REFRESH = "https://open.douyin.com/oauth/refresh_token/";
+var DOUYIN_USER_INFO = "https://open.douyin.com/oauth/userinfo/";
+var TOKEN_REFRESH_THRESHOLD_MS = 10 * 60 * 1e3;
+var DouyinOAuthService = class {
+  constructor(db) {
+    this.db = db;
+  }
+  static {
+    __name(this, "DouyinOAuthService");
+  }
+  /** 构造抖音 OAuth 授权跳转 URL */
+  getOAuthUrl(clientKey, redirectUri, state) {
+    const params = new URLSearchParams({
+      client_key: clientKey,
+      response_type: "code",
+      scope: "user_info,data.external.user",
+      redirect_uri: redirectUri,
+      state
+    });
+    return `${DOUYIN_OAUTH_AUTHORIZE}?${params.toString()}`;
+  }
+  /** 用授权码换取 access_token */
+  async exchangeToken(clientKey, clientSecret, code) {
+    const body = new URLSearchParams({
+      client_key: clientKey,
+      client_secret: clientSecret,
+      code,
+      grant_type: "authorization_code"
+    });
+    const res = await fetch(DOUYIN_OAUTH_TOKEN, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+    return res.json();
+  }
+  /** 获取抖音用户信息 */
+  async getUserInfo(accessToken, openId) {
+    try {
+      const body = new URLSearchParams({ access_token: accessToken, open_id: openId });
+      const res = await fetch(DOUYIN_USER_INFO, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body
+      });
+      const data = await res.json();
+      if (data.data?.error_code && data.data.error_code !== 0) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  }
+  /** 将抖音授权信息保存（或更新）到 accounts 表 */
+  async saveAccount(userId, tokenData) {
+    const platform2 = "douyin";
+    const platformUid = tokenData.openId;
+    const existing = await this.db.select({ id: accounts.id }).from(accounts).where(
+      and(
+        eq(accounts.userId, userId),
+        eq(accounts.platform, platform2),
+        eq(accounts.platformUid, platformUid)
+      )
+    ).get();
+    const ts = now();
+    const tokenExpiresAt = ts + tokenData.expiresIn * 1e3;
+    if (existing) {
+      await this.db.update(accounts).set({
+        accessToken: tokenData.accessToken,
+        refreshToken: tokenData.refreshToken,
+        tokenExpiresAt,
+        nickname: tokenData.name,
+        avatar: tokenData.avatar || null,
+        updatedAt: ts
+      }).where(eq(accounts.id, existing.id));
+      return jsonResponse({
+        id: existing.id,
+        platform: platform2,
+        platformUid,
+        nickname: tokenData.name,
+        updated: true
+      });
+    }
+    const id = uuid();
+    await this.db.insert(accounts).values({
+      id,
+      userId,
+      platform: platform2,
+      platformUid,
+      nickname: tokenData.name,
+      avatar: tokenData.avatar || null,
+      accessToken: tokenData.accessToken,
+      refreshToken: tokenData.refreshToken,
+      tokenExpiresAt,
+      createdAt: ts,
+      updatedAt: ts
+    });
+    return jsonResponse({
+      id,
+      platform: platform2,
+      platformUid,
+      nickname: tokenData.name,
+      created: true
+    });
+  }
+  // =====================================================================
+  // Token 管理与自动刷新
+  // =====================================================================
+  async getAccountAccessToken(accountId, clientKey, clientSecret) {
+    const account = await this.db.select({
+      accessToken: accounts.accessToken,
+      refreshToken: accounts.refreshToken,
+      tokenExpiresAt: accounts.tokenExpiresAt
+    }).from(accounts).where(eq(accounts.id, accountId)).get();
+    if (!account || !account.accessToken) {
+      throw new Error(`\u6296\u97F3\u8D26\u53F7\u4E0D\u5B58\u5728\u6216\u672A\u6388\u6743: ${accountId}`);
+    }
+    const remaining = (account.tokenExpiresAt || 0) - now();
+    if (remaining > TOKEN_REFRESH_THRESHOLD_MS) {
+      return account.accessToken;
+    }
+    if (!account.refreshToken) {
+      throw new Error(`\u6296\u97F3 token \u5DF2\u8FC7\u671F\u4E14\u65E0 refresh_token\uFF0C\u8BF7\u91CD\u65B0\u6388\u6743: ${accountId}`);
+    }
+    return this.refreshAccessToken(accountId, account.refreshToken, clientKey, clientSecret);
+  }
+  async refreshAccessToken(accountId, refreshToken, clientKey, clientSecret) {
+    const body = new URLSearchParams({
+      client_key: clientKey,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken
+    });
+    const res = await fetch(DOUYIN_OAUTH_REFRESH, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+    const data = await res.json();
+    if (data.message !== "success" || !data.data) {
+      throw new Error(`\u6296\u97F3 token \u5237\u65B0\u5931\u8D25: ${data.message}`);
+    }
+    const ts = now();
+    await this.db.update(accounts).set({
+      accessToken: data.data.access_token,
+      refreshToken: data.data.refresh_token,
+      tokenExpiresAt: ts + data.data.expires_in * 1e3,
+      updatedAt: ts
+    }).where(eq(accounts.id, accountId));
+    return data.data.access_token;
+  }
+};
+
+// src/platforms/douyin/douyin.routes.ts
+function createDouyinRoutes(config2, internalToken) {
+  const douyin = new Hono2();
+  const getOAuthService = /* @__PURE__ */ __name((c) => new DouyinOAuthService(createDb(c.env.DB)), "getOAuthService");
+  douyin.get("/douyin/oauth/authorize", (c) => {
+    if (!config2.clientId) return errorResponse("DOUYIN_CLIENT_ID not configured", 500);
+    const redirectUri = config2.redirectUri || `${new URL(c.req.url).origin}/platforms/douyin/oauth/callback`;
+    const userId = c.req.query("userId") || "";
+    const statePayload = encodeURIComponent(
+      JSON.stringify({ state: crypto.randomUUID(), userId, redirectUri })
+    );
+    const service = getOAuthService(c);
+    const url = service.getOAuthUrl(config2.clientId, redirectUri, statePayload);
+    return c.redirect(url);
+  });
+  douyin.get("/douyin/oauth/callback", async (c) => {
+    const code = c.req.query("code");
+    const stateParam = c.req.query("state");
+    if (!code) return errorResponse("Missing authorization code", 400);
+    let userId = "internal";
+    let redirectUri = `${new URL(c.req.url).origin}`;
+    if (stateParam) {
+      try {
+        const stateData = JSON.parse(decodeURIComponent(stateParam));
+        if (stateData.userId) userId = stateData.userId;
+        if (stateData.redirectUri) redirectUri = stateData.redirectUri;
+      } catch {
+      }
+    }
+    if (!config2.clientId || !config2.clientSecret) return errorResponse("\u6296\u97F3\u51ED\u636E\u672A\u914D\u7F6E", 500);
+    const service = getOAuthService(c);
+    const tokenRes = await service.exchangeToken(config2.clientId, config2.clientSecret, code);
+    if (tokenRes.message !== "success" || !tokenRes.data) {
+      return errorResponse(`\u6296\u97F3\u6388\u6743\u5931\u8D25: ${tokenRes.message}`, 502);
+    }
+    const userInfo = await service.getUserInfo(
+      tokenRes.data.access_token,
+      tokenRes.data.open_id
+    );
+    const name = userInfo?.data?.nickname || `\u6296\u97F3\u7528\u6237_${tokenRes.data.open_id}`;
+    const result = await service.saveAccount(userId, {
+      accessToken: tokenRes.data.access_token,
+      refreshToken: tokenRes.data.refresh_token,
+      expiresIn: tokenRes.data.expires_in,
+      openId: tokenRes.data.open_id,
+      name,
+      avatar: userInfo?.data?.avatar
+    });
+    const resultData = await result.json();
+    const returnUrl = new URL(redirectUri);
+    returnUrl.searchParams.set("relay_callback", "1");
+    returnUrl.searchParams.set("account_id", resultData.id || "");
+    returnUrl.searchParams.set("platform", "douyin");
+    returnUrl.searchParams.set("nickname", name);
+    return c.redirect(returnUrl.toString());
+  });
+  douyin.post(
+    "/douyin/publish",
+    requireInternalAuth(internalToken),
+    async (c) => {
+      const body = await c.req.json();
+      if (!body.title) return errorResponse("title is required", 400);
+      if (!config2.clientId || !config2.clientSecret) {
+        return errorResponse("\u6296\u97F3 clientId/clientSecret \u672A\u914D\u7F6E", 500);
+      }
+      const result = await douyinPublish({
+        title: body.title,
+        description: body.description,
+        videoUrl: body.videoUrl,
+        imageUrls: body.imageUrls,
+        topics: body.topics,
+        downloadType: body.downloadType,
+        privateStatus: body.privateStatus
+      }, { clientId: config2.clientId, clientSecret: config2.clientSecret });
+      if (!result.success) return errorResponse(result.error || "\u53D1\u5E03\u5931\u8D25", 502);
+      return jsonResponse(result);
+    }
+  );
+  douyin.post("/douyin/webhooks", async (c) => {
+    const body = await c.req.json();
+    if (body.event === "verify_webhook" && body.content?.challenge) {
+      return jsonResponse({ challenge: body.content.challenge });
+    }
+    if (body.event === "create_video" && body.content?.share_id) {
+      const db = createDb(c.env.DB);
+      const shareId = body.content.share_id;
+      const videoId = body.content.video_id || "";
+      const records = await db.select().from(publishRecords).where(eq(publishRecords.platform, "douyin")).all();
+      const matched = records.find(
+        (r) => r.status === PUBLISH_STATUS.PUBLISHING && r.platformWorkId === shareId
+      );
+      if (matched) {
+        await db.update(publishRecords).set({
+          status: PUBLISH_STATUS.PUBLISHED,
+          platformWorkId: videoId,
+          workUrl: videoId ? `https://www.douyin.com/video/${videoId}` : matched.workUrl,
+          updatedAt: Date.now()
+        }).where(eq(publishRecords.id, matched.id));
+      }
+    }
+    return jsonResponse({ code: 0, message: "ok" });
+  });
+  return douyin;
+}
+__name(createDouyinRoutes, "createDouyinRoutes");
+
 // src/modules/publish/publish.service.ts
 var PublishService = class {
-  constructor(db, config2, queue2) {
+  constructor(db, config2, queue2, douyinConfig) {
     this.db = db;
     this.config = config2;
     this.queue = queue2;
+    this.douyinConfig = douyinConfig;
   }
   static {
     __name(this, "PublishService");
@@ -13754,6 +14148,34 @@ var PublishService = class {
       updatedAt: ts
     });
     const isImmediate = Math.abs(effectivePublishTime - ts) <= this.config.immediateToleranceMs;
+    if (platform2 === "douyin" && this.douyinConfig?.clientId && this.douyinConfig?.clientSecret && isImmediate) {
+      const result = await douyinPublish({
+        title: data.title,
+        description: data.description,
+        videoUrl: data.videoUrl,
+        imageUrls: data.imageUrls,
+        topics: data.topics
+      }, {
+        clientId: this.douyinConfig.clientId,
+        clientSecret: this.douyinConfig.clientSecret
+      });
+      if (result.success && result.shareId) {
+        await this.db.update(publishRecords).set({
+          status: PUBLISH_STATUS.PUBLISHING,
+          platformWorkId: result.shareId,
+          workUrl: result.permalink || null,
+          updatedAt: now()
+        }).where(eq(publishRecords.id, recordId));
+        return jsonResponse({
+          id: recordId,
+          queueId,
+          status: PUBLISH_STATUS.PUBLISHING,
+          permalink: result.permalink,
+          shareId: result.shareId,
+          immediate: true
+        });
+      }
+    }
     if (isImmediate) {
       await this.enqueuePublish(recordId, platform2, data.accountId, this.config.defaultMaxRetries, data);
       return jsonResponse({ id: recordId, queueId, status: PUBLISH_STATUS.QUEUED, immediate: true });
@@ -13823,9 +14245,9 @@ var PublishService = class {
 };
 
 // src/modules/publish/publish.routes.ts
-function createPublishRoutes(config2) {
+function createPublishRoutes(config2, douyinConfig) {
   const publish = new Hono2();
-  const getService = /* @__PURE__ */ __name((c) => new PublishService(createDb(c.env.DB), config2, c.env.PUBLISH_QUEUE), "getService");
+  const getService = /* @__PURE__ */ __name((c) => new PublishService(createDb(c.env.DB), config2, c.env.PUBLISH_QUEUE, douyinConfig), "getService");
   publish.post("/", zValidator("json", createPublishSchema), async (c) => {
     const body = c.req.valid("json");
     const service = getService(c);
@@ -14025,12 +14447,12 @@ function createFileRoutes() {
 __name(createFileRoutes, "createFileRoutes");
 
 // src/platforms/bilibili/bilibili.publisher.ts
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 var CHUNK_SIZE = 1024 * 1024 * 5;
 async function generateBilibiliHeaders(accessToken, clientId, clientSecret, body, formHeaders) {
   const encoder = new TextEncoder();
   const bodyStr = body ? JSON.stringify(body) : "";
-  const md5Hash = createHash("md5").update(bodyStr).digest("hex");
+  const md5Hash = createHash2("md5").update(bodyStr).digest("hex");
   const headers = {
     Accept: "application/json",
     "Content-Type": formHeaders ? "multipart/form-data" : "application/json",
@@ -14278,7 +14700,7 @@ __name(bilibiliPublish, "bilibiliPublish");
 var BILIBILI_OAUTH_AUTHORIZE = "https://member.bilibili.com/platform/login.html";
 var BILIBILI_OAUTH_TOKEN = "https://api.bilibili.com/x/account-oauth2/v1/token";
 var BILIBILI_OAUTH_REFRESH = "https://api.bilibili.com/x/account-oauth2/v1/refresh_token";
-var TOKEN_REFRESH_THRESHOLD_MS = 10 * 60 * 1e3;
+var TOKEN_REFRESH_THRESHOLD_MS2 = 10 * 60 * 1e3;
 var BilibiliOAuthService = class {
   constructor(db) {
     this.db = db;
@@ -14381,7 +14803,7 @@ var BilibiliOAuthService = class {
       throw new Error(`B\u7AD9\u8D26\u53F7\u4E0D\u5B58\u5728\u6216\u672A\u6388\u6743: ${accountId}`);
     }
     const remaining = (account.tokenExpiresAt || 0) - now();
-    if (remaining > TOKEN_REFRESH_THRESHOLD_MS) {
+    if (remaining > TOKEN_REFRESH_THRESHOLD_MS2) {
       return account.accessToken;
     }
     if (!account.refreshToken) {
@@ -14544,7 +14966,7 @@ var platformPublishers = {};
 async function queue(batch, env2) {
   const db = createDb(env2.DB);
   const cfg = createAppConfig(env2);
-  const publishService = new PublishService(db, cfg.publish, env2.PUBLISH_QUEUE);
+  const publishService = new PublishService(db, cfg.publish, env2.PUBLISH_QUEUE, cfg.platforms.douyin);
   const oauthService = new BilibiliOAuthService(db);
   for (const msg of batch.messages) {
     const { recordId, platform: platform2, accountId, retryCount, maxRetries } = msg.body;
@@ -14574,6 +14996,17 @@ async function queue(batch, env2) {
         }, {
           clientId: cfg.platforms.bilibili.clientId,
           clientSecret: cfg.platforms.bilibili.clientSecret
+        });
+      } else if (platform2 === "douyin") {
+        result = await douyinPublish({
+          title: msg.body.params.title || "",
+          description: msg.body.params.description,
+          videoUrl: msg.body.params.videoUrl,
+          imageUrls: msg.body.params.imageUrls,
+          topics: msg.body.params.topics
+        }, {
+          clientId: cfg.platforms.douyin.clientId,
+          clientSecret: cfg.platforms.douyin.clientSecret
         });
       } else {
         const publisher = platformPublishers[platform2];
@@ -14632,11 +15065,12 @@ async function createApp(env2) {
   api.use("*", tryInternalAuth(cfg.auth.internalToken));
   api.use("*", authMiddleware);
   api.route("/accounts", createAccountRoutes());
-  api.route("/publish", createPublishRoutes(cfg.publish));
+  api.route("/publish", createPublishRoutes(cfg.publish, cfg.platforms.douyin));
   api.route("/credit", createCreditRoutes());
   api.route("/files", createFileRoutes());
   app.route("/api", api);
   app.route("/platforms", createBilibiliRoutes(cfg.platforms.bilibili, cfg.auth.internalToken));
+  app.route("/platforms", createDouyinRoutes(cfg.platforms.douyin, cfg.auth.internalToken));
   app.get("/health", (c) => c.json({ status: "ok", timestamp: Date.now() }));
   app.notFound((c) => errorResponse(`Not Found: ${c.req.method} ${c.req.path}`, 404));
   app.onError((err, c) => {

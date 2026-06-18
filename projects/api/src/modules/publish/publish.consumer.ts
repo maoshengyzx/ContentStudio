@@ -4,6 +4,7 @@ import { createAppConfig } from '../../config'
 import { createDb, accounts } from '../../shared'
 import { PublishService } from './publish.service'
 import { bilibiliPublish, BilibiliOAuthService } from '../../platforms/bilibili'
+import { douyinPublish } from '../../platforms/douyin'
 import { eq } from 'drizzle-orm'
 
 const platformPublishers: Record<string, (accountId: string, params: Record<string, unknown>) => Promise<{ success: boolean; workUrl?: string; platformWorkId?: string; error?: string }>> = {}
@@ -11,7 +12,7 @@ const platformPublishers: Record<string, (accountId: string, params: Record<stri
 export async function queue(batch: MessageBatch<PublishJobData>, env: Env) {
   const db = createDb(env.DB)
   const cfg = createAppConfig(env)
-  const publishService = new PublishService(db, cfg.publish, env.PUBLISH_QUEUE)
+  const publishService = new PublishService(db, cfg.publish, env.PUBLISH_QUEUE, cfg.platforms.douyin)
   const oauthService = new BilibiliOAuthService(db)
 
   for (const msg of batch.messages) {
@@ -52,6 +53,18 @@ export async function queue(batch: MessageBatch<PublishJobData>, env: Env) {
         }, {
           clientId: cfg.platforms.bilibili.clientId,
           clientSecret: cfg.platforms.bilibili.clientSecret,
+        })
+      } else if (platform === 'douyin') {
+        // 抖音 Share Schema 重试（如果 PublishService bypass 失败回退到队列）
+        result = await douyinPublish({
+          title: (msg.body.params.title as string) || '',
+          description: msg.body.params.description as string | undefined,
+          videoUrl: msg.body.params.videoUrl as string | undefined,
+          imageUrls: msg.body.params.imageUrls as string[] | undefined,
+          topics: msg.body.params.topics as string[] | undefined,
+        }, {
+          clientId: cfg.platforms.douyin.clientId,
+          clientSecret: cfg.platforms.douyin.clientSecret,
         })
       } else {
         const publisher = platformPublishers[platform]

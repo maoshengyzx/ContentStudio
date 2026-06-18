@@ -10,6 +10,7 @@ import { createCreditRoutes } from './modules/credit/credit.routes'
 import { createFileRoutes } from './modules/file/file.routes'
 import { errorResponse } from './shared'
 import { createBilibiliRoutes } from './platforms/bilibili'
+import { createDouyinRoutes } from './platforms/douyin'
 import type { PublishJobData } from './shared'
 import {
   createAuthMiddleware,
@@ -41,7 +42,7 @@ async function createApp(env: Env) {
   api.use('*', authMiddleware)
 
   api.route('/accounts', createAccountRoutes())
-  api.route('/publish', createPublishRoutes(cfg.publish))
+  api.route('/publish', createPublishRoutes(cfg.publish, cfg.platforms.douyin))
   api.route('/credit', createCreditRoutes())
   api.route('/files', createFileRoutes())
 
@@ -49,6 +50,7 @@ async function createApp(env: Env) {
 
   // ---- /platforms 路由（OAuth 流程 + 内部发布端点） ----
   app.route('/platforms', createBilibiliRoutes(cfg.platforms.bilibili, cfg.auth.internalToken))
+  app.route('/platforms', createDouyinRoutes(cfg.platforms.douyin, cfg.auth.internalToken))
 
   // ---- 健康检查 & 错误处理 ----
   app.get('/health', (c) => c.json({ status: 'ok', timestamp: Date.now() }))

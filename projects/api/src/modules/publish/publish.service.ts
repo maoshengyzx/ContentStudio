@@ -1,16 +1,18 @@
 import type { DbClient } from '../../shared'
-import type { PublishConfig } from '../../config'
+import type { PublishConfig, DouyinConfig } from '../../config'
 import { publishRecords, accounts } from '../../shared'
 import { eq, and, sql } from 'drizzle-orm'
 import { uuid, now, jsonResponse, errorResponse, paginatedResponse } from '../../shared'
 import { PUBLISH_STATUS } from '../../shared'
 import type { PublishJobData } from '../../shared'
+import { douyinPublish } from '../../platforms/douyin'
 
 export class PublishService {
   constructor(
     private db: DbClient,
     private config: PublishConfig,
     private queue: Queue<any>,
+    private douyinConfig?: DouyinConfig,
   ) {}
 
   async createPublishTask(
@@ -63,6 +65,40 @@ export class PublishService {
     })
 
     const isImmediate = Math.abs(effectivePublishTime - ts) <= this.config.immediateToleranceMs
+
+    // 抖音：跳过队列，立即生成 Share Schema URL（参照 aitoearn douyin bypass）
+    if (platform === 'douyin' && this.douyinConfig?.clientId && this.douyinConfig?.clientSecret && isImmediate) {
+      const result = await douyinPublish({
+        title: data.title,
+        description: data.description,
+        videoUrl: data.videoUrl,
+        imageUrls: data.imageUrls,
+        topics: data.topics,
+      }, {
+        clientId: this.douyinConfig.clientId,
+        clientSecret: this.douyinConfig.clientSecret,
+      })
+
+      if (result.success && result.shareId) {
+        await this.db.update(publishRecords).set({
+          status: PUBLISH_STATUS.PUBLISHING,
+          platformWorkId: result.shareId,
+          workUrl: result.permalink || null,
+          updatedAt: now(),
+        }).where(eq(publishRecords.id, recordId))
+
+        return jsonResponse({
+          id: recordId,
+          queueId,
+          status: PUBLISH_STATUS.PUBLISHING,
+          permalink: result.permalink,
+          shareId: result.shareId,
+          immediate: true,
+        })
+      }
+
+      // Share Schema 生成失败，回退到队列
+    }
 
     if (isImmediate) {
       await this.enqueuePublish(recordId, platform, data.accountId, this.config.defaultMaxRetries, data)
